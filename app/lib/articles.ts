@@ -125,11 +125,29 @@ export const articles = [
   {
     slug: "prepare-for-agency-verification",
     title: "How to prepare for agency verification",
-    excerpt: "A simple checklist for job seekers: documents, references, honest work history and what to expect from the verification call.",
+    excerpt:
+      "A simple checklist for job seekers: documents, references, honest work history and what to expect from the verification call.",
     date: "2026-07-21",
     read: "5 min",
     cover: "/images/recruitment-hero.webp",
-    sections: [["Gather clear, current documents","Prepare a readable ID copy, a recent passport photo, your CV and role-relevant certificates. Upload only through your private account or present them to authorised agency staff."],["Make your work history easy to confirm","Use accurate dates, role names and responsibilities. Ask referees for permission before sharing their contact details and let them know the agency may call."],["Be direct during the verification call","Explain what you do well, the roles you want, your availability, preferred location and realistic salary expectations. Honest information produces stronger matches than exaggerated claims."],["Know what professional verification looks like","Double M reviews information for recruitment purposes, restricts identity documents to authorised staff and does not expose raw IDs or certificates to employers. Verification supports human decisions; it does not promise placement."]],
+    sections: [
+      [
+        "Gather clear, current documents",
+        "Prepare a readable ID copy, a recent passport photo, your CV and role-relevant certificates. Upload only through your private account or present them to authorised agency staff.",
+      ],
+      [
+        "Make your work history easy to confirm",
+        "Use accurate dates, role names and responsibilities. Ask referees for permission before sharing their contact details and let them know the agency may call.",
+      ],
+      [
+        "Be direct during the verification call",
+        "Explain what you do well, the roles you want, your availability, preferred location and realistic salary expectations. Honest information produces stronger matches than exaggerated claims.",
+      ],
+      [
+        "Know what professional verification looks like",
+        "Double M reviews information for recruitment purposes, restricts identity documents to authorised staff and does not expose raw IDs or certificates to employers. Verification supports human decisions; it does not promise placement.",
+      ],
+    ],
   },
 ] as const;
 export function article(slug: string) {

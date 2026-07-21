@@ -3,6 +3,7 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 export default function Assisted() {
   const [message, setMessage] = useState("");
+  const [role, setRole] = useState("candidate");
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setMessage("Creating the account…");
@@ -35,7 +36,11 @@ export default function Assisted() {
           <h2>Account and profile</h2>
           <label>
             Register as
-            <select name="role">
+            <select
+              name="role"
+              value={role}
+              onChange={(event) => setRole(event.target.value)}
+            >
               <option value="candidate">Candidate seeking work</option>
               <option value="employer">Employer hiring staff</option>
             </select>
@@ -56,10 +61,25 @@ export default function Assisted() {
             County or town
             <input name="location" required />
           </label>
-          <label>
-            Main profession (candidate)
-            <input name="profession" placeholder="For example: caregiver" />
-          </label>
+          {role === "candidate" && (
+            <>
+              <label>
+                Main profession
+                <input name="profession" placeholder="For example: caregiver" />
+              </label>
+              <label>
+                Year and date of birth
+                <input name="dateOfBirth" type="date" />
+              </label>
+              <label>
+                Education level
+                <input
+                  name="educationLevel"
+                  placeholder="For example: secondary school"
+                />
+              </label>
+            </>
+          )}
           <label>
             Temporary password
             <input

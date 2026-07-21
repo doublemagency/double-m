@@ -52,12 +52,16 @@ export default async function ArticlePage({
   params: Promise<{ slug: string }>;
 }) {
   const slug = (await params).slug;
-  const local = article(slug);
-  const approved = local ? null : await managed(slug);
+  const approved = await managed(slug);
+  const local = approved ? undefined : article(slug);
   if (!local && !approved) notFound();
   const title = local?.title || approved!.title,
     excerpt = local?.excerpt || approved!.excerpt;
-  const cover=local?.cover||(approved?.cover_image?`${process.env.NEXT_PUBLIC_API_URL}/media/articles/${approved.cover_image}`:"/images/recruitment-hero.webp");
+  const cover =
+    local?.cover ||
+    (approved?.cover_image
+      ? `${process.env.NEXT_PUBLIC_API_URL}/media/articles/${approved.cover_image}`
+      : "/images/recruitment-hero.webp");
   return (
     <>
       <SiteHeader />
@@ -67,28 +71,26 @@ export default async function ArticlePage({
             <Image src={cover} fill priority unoptimized sizes="100vw" alt="" />
             <div className="article-header-wash" />
             <div className="article-header-copy">
-            <span>Double M Agency guide</span>
-            <h1>{title}</h1>
-            <p>{excerpt}</p>
-            <ShareButton title={title} />
+              <span>Double M Agency guide</span>
+              <h1>{title}</h1>
+              <p>{excerpt}</p>
+              <ShareButton title={title} />
             </div>
           </header>
           <div className="article-body">
-            {local
-              ? local.sections.map(([heading, text]) => (
-                  <section key={heading}>
-                    <h2>{heading}</h2>
-                    <p>{text}</p>
-                  </section>
-                ))
-              : approved!.content
-                  .split(/\n\s*\n/)
-                  .filter(Boolean)
-                  .map((text, index) => (
-                    <section key={index}>
-                      <p>{text}</p>
-                    </section>
-                  ))}
+            {local ? (
+              local.sections.map(([heading, text]) => (
+                <section key={heading}>
+                  <h2>{heading}</h2>
+                  <p>{text}</p>
+                </section>
+              ))
+            ) : (
+              <section
+                className="managed-article"
+                dangerouslySetInnerHTML={{ __html: approved!.content }}
+              />
+            )}
             <aside>
               <b>Need support with a real recruitment decision?</b>
               <p>

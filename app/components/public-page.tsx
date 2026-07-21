@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { SiteHeader } from "./site-header";
+import { SiteFooter } from "./site-footer";
 export function PublicPage({
   eyebrow,
   title,
@@ -41,6 +42,7 @@ export function PublicPage({
           </div>
         </section>
       </main>
+      <SiteFooter />
     </>
   );
 }

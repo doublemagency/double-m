@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { createReadStream, mkdirSync } from "node:fs";
+import { unlink } from "node:fs/promises";
 import path from "node:path";
 import express from "express";
 import multer from "multer";
@@ -72,6 +73,30 @@ const articleImageUpload = multer({
       ["image/jpeg", "image/png", "image/webp"].includes(file.mimetype),
     ),
 });
+const cleanArticleHtml = (value) =>
+  sanitizeHtml(value, {
+    allowedTags: [
+      "h2",
+      "h3",
+      "p",
+      "strong",
+      "em",
+      "blockquote",
+      "ul",
+      "ol",
+      "li",
+      "br",
+      "table",
+      "thead",
+      "tbody",
+      "tr",
+      "th",
+      "td",
+      "a",
+    ],
+    allowedAttributes: { a: ["href"] },
+    allowedSchemes: ["https", "mailto"],
+  });
 const privateUpload = multer({
   storage: multer.diskStorage({
     destination: uploadRoot,
@@ -1017,17 +1042,40 @@ app.post(
           .json({ message: "This contract cannot be signed." });
       }
       const [[contract]] = await connection.execute(
-        "SELECT job_id,candidate_user_id,status FROM employment_contracts WHERE id=? FOR UPDATE",
+        "SELECT job_id,placement_id,employer_user_id,candidate_user_id,role_title,start_date,end_date,status FROM employment_contracts WHERE id=? FOR UPDATE",
         [id],
       );
-      if (contract.status === "fully_signed" && contract.job_id) {
-        await connection.execute("UPDATE jobs SET status='filled' WHERE id=?", [
-          contract.job_id,
-        ]);
+      if (contract.status === "fully_signed") {
+        if (!contract.placement_id) {
+          const [placement] = await connection.execute(
+            "INSERT INTO placements(employer_user_id,candidate_user_id,role_title,status,start_date,end_date) VALUES(?,?,?,'active',?,?)",
+            [
+              contract.employer_user_id,
+              contract.candidate_user_id,
+              contract.role_title,
+              contract.start_date,
+              contract.end_date,
+            ],
+          );
+          await connection.execute(
+            "UPDATE employment_contracts SET placement_id=? WHERE id=?",
+            [placement.insertId, id],
+          );
+        }
         await connection.execute(
-          "UPDATE applications SET status=IF(candidate_user_id=?,'placed','not_selected') WHERE job_id=? AND status NOT IN ('placed','not_selected')",
-          [contract.candidate_user_id, contract.job_id],
+          "UPDATE candidate_profiles SET availability_status='placed' WHERE user_id=?",
+          [contract.candidate_user_id],
         );
+        if (contract.job_id) {
+          await connection.execute(
+            "UPDATE jobs SET status='filled' WHERE id=?",
+            [contract.job_id],
+          );
+          await connection.execute(
+            "UPDATE applications SET status=IF(candidate_user_id=?,'placed','not_selected') WHERE job_id=? AND status NOT IN ('placed','not_selected')",
+            [contract.candidate_user_id, contract.job_id],
+          );
+        }
       }
       await connection.commit();
       res.json({
@@ -1044,16 +1092,6 @@ app.post(
     }
   },
 );
-app.get("/api/v1/articles", async (_req, res, next) => {
-  try {
-    const [articles] = await db().execute(
-      "SELECT slug,title,excerpt,published_at FROM articles WHERE status='published' ORDER BY published_at DESC LIMIT 50",
-    );
-    res.json({ articles });
-  } catch (e) {
-    next(e);
-  }
-});
 app.get("/api/v1/settings/public", async (_req, res, next) => {
   try {
     const [rows] = await db().query(
@@ -1540,6 +1578,21 @@ app.post(
   },
 );
 app.get(
+  "/api/v1/staff/recruitment-requests",
+  requireAuth,
+  allow("administrator", "agency_staff"),
+  async (_req, res, next) => {
+    try {
+      const [requests] = await db().query(
+        "SELECT sr.id,sr.reference_code,sr.role_needed,sr.location,sr.requirements,sr.status,u.id employer_user_id,sr.email FROM staffing_requests sr LEFT JOIN users u ON u.email=sr.email AND u.role='employer' WHERE sr.status IN ('new','contacted','confirmed','matching','shortlisted') ORDER BY sr.created_at DESC LIMIT 100",
+      );
+      res.json({ requests });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+app.get(
   "/api/v1/staff/matches/:requestId",
   requireAuth,
   allow("administrator", "agency_staff"),
@@ -1552,7 +1605,7 @@ app.get(
       if (!requests[0])
         return res.status(404).json({ message: "Staffing request not found." });
       const [candidates] = await db().query(
-        "SELECT user_id,full_name,profession,location,availability_status FROM candidate_profiles WHERE availability_status='available' LIMIT 200",
+        "SELECT cp.user_id,cp.full_name,cp.profession,cp.location,cp.availability_status FROM candidate_profiles cp JOIN users u ON u.id=cp.user_id AND u.status='active' JOIN candidate_verification_checks identity_check ON identity_check.candidate_user_id=cp.user_id AND identity_check.check_code='identity' AND identity_check.status='verified' JOIN candidate_verification_checks phone_check ON phone_check.candidate_user_id=cp.user_id AND phone_check.check_code='phone_call' AND phone_check.status='verified' WHERE cp.availability_status='available' LIMIT 200",
       );
       const matches = candidates
         .map((candidate) => ({
@@ -1598,7 +1651,7 @@ app.post(
         return res.status(404).json({ message: "Staffing request not found." });
       const placeholders = v.candidateUserIds.map(() => "?").join(",");
       const [candidates] = await db().execute(
-        `SELECT user_id,full_name,profession,location,availability_status FROM candidate_profiles WHERE user_id IN (${placeholders})`,
+        `SELECT cp.user_id,cp.full_name,cp.profession,cp.location,cp.availability_status FROM candidate_profiles cp JOIN users u ON u.id=cp.user_id AND u.status='active' JOIN candidate_verification_checks identity_check ON identity_check.candidate_user_id=cp.user_id AND identity_check.check_code='identity' AND identity_check.status='verified' JOIN candidate_verification_checks phone_check ON phone_check.candidate_user_id=cp.user_id AND phone_check.check_code='phone_call' AND phone_check.status='verified' WHERE cp.user_id IN (${placeholders}) AND cp.availability_status='available'`,
         v.candidateUserIds,
       );
       const conn = await db().getConnection();
@@ -1677,6 +1730,39 @@ app.put(
         message:
           "Your preference was shared with the agency. The agency will coordinate the next step.",
       });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+app.get(
+  "/api/v1/staff/candidates/:candidateId",
+  requireAuth,
+  allow("administrator", "agency_staff"),
+  async (req, res, next) => {
+    try {
+      const id = z.coerce
+        .number()
+        .int()
+        .positive()
+        .parse(req.params.candidateId);
+      const [[profiles], [documents], [checks]] = await Promise.all([
+        db().execute(
+          "SELECT cp.user_id,cp.full_name,cp.phone,cp.profession,cp.location,cp.availability_status,cp.profile_completion,cd.date_of_birth,cd.education_level,u.email,u.status FROM candidate_profiles cp JOIN users u ON u.id=cp.user_id LEFT JOIN candidate_private_details cd ON cd.candidate_user_id=cp.user_id WHERE cp.user_id=?",
+          [id],
+        ),
+        db().execute(
+          "SELECT id,document_type,original_name,mime_type,file_size,status,created_at FROM candidate_documents WHERE candidate_user_id=? ORDER BY created_at DESC",
+          [id],
+        ),
+        db().execute(
+          "SELECT check_code,status,note,updated_at FROM candidate_verification_checks WHERE candidate_user_id=?",
+          [id],
+        ),
+      ]);
+      if (!profiles[0])
+        return res.status(404).json({ message: "Candidate not found." });
+      res.json({ profile: profiles[0], documents, checks });
     } catch (e) {
       next(e);
     }
@@ -1930,6 +2016,12 @@ app.get(
       );
       res.setHeader("Cache-Control", "private, no-store");
       res.setHeader("X-Content-Type-Options", "nosniff");
+      res.removeHeader("X-Frame-Options");
+      res.setHeader(
+        "Content-Security-Policy",
+        `default-src 'none'; frame-ancestors ${config.FRONTEND_URL}`,
+      );
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
       await db().execute(
         "INSERT INTO audit_logs(actor_user_id,action,entity_type,entity_id) VALUES(?,'document.preview','candidate_document',?)",
         [req.user.id, String(id)],
@@ -2005,7 +2097,7 @@ app.post(
           slug,
           v.title,
           v.excerpt,
-          v.content,
+          cleanArticleHtml(v.content),
           v.submit ? "pending_approval" : "draft",
           req.user.id,
         ],
@@ -2084,15 +2176,16 @@ app.put(
           })
           .parse(req.body);
       const [result] = await db().execute(
-        "UPDATE content_posts SET title=?,excerpt=?,content=?,status=?,review_note=NULL,published_at=NULL WHERE id=? AND (?='administrator' OR author_user_id=?) AND status<>'published'",
+        "UPDATE content_posts SET title=?,excerpt=?,content=?,status=?,review_note=NULL,published_at=NULL WHERE id=? AND (?='administrator' OR author_user_id=?) AND (?='administrator' OR status<>'published')",
         [
           v.title,
           v.excerpt,
-          v.content,
+          cleanArticleHtml(v.content),
           v.submit ? "pending_approval" : "draft",
           id,
           req.user.role,
           req.user.id,
+          req.user.role,
         ],
       );
       if (!result.affectedRows)
@@ -2117,6 +2210,10 @@ app.delete(
   async (req, res, next) => {
     try {
       const id = z.coerce.number().int().positive().parse(req.params.id);
+      const [[image]] = await db().execute(
+        "SELECT ci.storage_key FROM content_post_images ci JOIN content_posts cp ON cp.id=ci.post_id WHERE cp.id=? AND (?='administrator' OR cp.author_user_id=?) AND (?='administrator' OR cp.status<>'published')",
+        [id, req.user.role, req.user.id, req.user.role],
+      );
       const [result] = await db().execute(
         "DELETE FROM content_posts WHERE id=? AND (?='administrator' OR author_user_id=?) AND (?='administrator' OR status<>'published')",
         [id, req.user.role, req.user.id, req.user.role],
@@ -2125,6 +2222,10 @@ app.delete(
         return res
           .status(403)
           .json({ message: "This article cannot be deleted." });
+      if (image?.storage_key)
+        await unlink(
+          path.join(articleImageRoot, path.basename(image.storage_key)),
+        ).catch(() => {});
       res.json({ message: "Article deleted." });
     } catch (e) {
       next(e);
@@ -2142,6 +2243,7 @@ app.get("/api/v1/media/articles/:filename", async (req, res, next) => {
     res.setHeader("Content-Type", image.mime_type);
     res.setHeader("Cache-Control", "public, max-age=86400");
     res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     createReadStream(path.join(articleImageRoot, filename))
       .on("error", next)
       .pipe(res);
@@ -2186,6 +2288,7 @@ app.get("/health", async (_req, res) => {
   }
 });
 app.use((err, _req, res, _next) => {
+  void _next;
   if (err instanceof multer.MulterError)
     return res.status(err.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({
       message:

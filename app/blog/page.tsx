@@ -18,8 +18,8 @@ export default function Blog() {
           slug: a.slug,
           title: a.title,
           excerpt: a.excerpt,
-        read: a.read,
-        cover_image: a.cover,
+          read: a.read,
+          cover_image: a.cover,
         }))}
       />
     </PublicPage>

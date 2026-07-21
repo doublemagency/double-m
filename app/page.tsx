@@ -7,7 +7,6 @@ import {
   Check,
   ChevronRight,
   HeartHandshake,
-  MapPin,
   MessageCircle,
   Search,
   ShieldCheck,
@@ -15,6 +14,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { SiteHeader } from "./components/site-header";
+import { SiteFooter } from "./components/site-footer";
 
 const services = [
   {
@@ -322,53 +322,7 @@ export default function Home() {
         </div>
       </section>
 
-      <footer id="contact">
-        <div className="shell footer-grid">
-          <div className="footer-brand">
-            <Link href="/" className="brand">
-              <Image src="/brand/logo.jpeg" width={64} height={64} alt="" />
-              <span>
-                <strong>DOUBLE M</strong>
-                <small>AGENCY</small>
-              </span>
-            </Link>
-            <p>Trusted recruitment for homes, farms and businesses.</p>
-          </div>
-          <div>
-            <h3>Explore</h3>
-            <Link href="/jobs">Find jobs</Link>
-            <Link href="/hire">Hire staff</Link>
-            <Link href="#services">Services</Link>
-          </div>
-          <div>
-            <h3>Support</h3>
-            <Link href="/privacy">Privacy</Link>
-            <Link href="/fraud-safety">Fraud safety</Link>
-            <Link href="/contact">Contact us</Link>
-          </div>
-          <div>
-            <h3>Visit or speak to us</h3>
-            <p>
-              <MapPin size={16} /> Kenya
-            </p>
-            <p>Official contact details will appear here once verified.</p>
-          </div>
-        </div>
-        <div className="shell footer-bottom">
-          <span>
-            © {new Date().getFullYear()} Double M Agency. All rights reserved.
-          </span>
-          <span>Recruitment with care and accountability.</span>
-        </div>
-      </footer>
-      <Link
-        className="whatsapp"
-        href="/contact"
-        aria-label="Chat with Double M Agency"
-      >
-        <MessageCircle />
-        <span>Chat with us</span>
-      </Link>
+      <SiteFooter />
     </main>
   );
 }

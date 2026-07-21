@@ -85,79 +85,79 @@ export default function Dashboard() {
           DOUBLE M <small>AGENCY</small>
         </Link>
         <nav>
-          <a className="active">
+          <Link href="/dashboard" className="active">
             <LayoutDashboard />
             Overview
-          </a>
+          </Link>
           {user.role === "employer" && (
             <>
-              <a>
+              <Link href="/dashboard/client">
                 <ClipboardList />
                 Requests
-              </a>
-              <a>
+              </Link>
+              <Link href="/dashboard/client">
                 <UsersRound />
                 Placements
-              </a>
-              <a>
+              </Link>
+              <Link href="/dashboard/client">
                 <CreditCard />
                 Payments
-              </a>
-              <a>
+              </Link>
+              <Link href="/dashboard/client">
                 <RefreshCcw />
                 Replacements
-              </a>
-              <a>
+              </Link>
+              <Link href="/dashboard/client">
                 <Star />
                 Reviews
-              </a>
+              </Link>
             </>
           )}
           {user.role === "candidate" && (
             <>
-              <a>
+              <Link href="/dashboard/preferences">
                 <CircleUserRound />
                 My profile
-              </a>
-              <a>
+              </Link>
+              <Link href="/jobs">
                 <Search />
                 Recommended jobs
-              </a>
-              <a>
+              </Link>
+              <Link href="/dashboard">
                 <BriefcaseBusiness />
                 Applications
-              </a>
-              <a>
+              </Link>
+              <Link href="/dashboard">
                 <FileCheck2 />
                 Documents
-              </a>
+              </Link>
             </>
           )}
           {["administrator", "agency_staff"].includes(user.role) && (
             <>
-              <a>
+              <Link href="/dashboard/matching">
                 <UsersRound />
                 Candidates
-              </a>
-              <a>
+              </Link>
+              <Link href="/dashboard/matching">
                 <BriefcaseBusiness />
                 Employer requests
-              </a>
-              <a>
+              </Link>
+              <Link href="/dashboard/matching">
                 <Sparkles />
                 Matching
-              </a>
-              <a>
+              </Link>
+              <Link href="/dashboard/contracts">
                 <CalendarClock />
                 Interviews
-              </a>
+              </Link>
             </>
           )}
           {user.role === "administrator" && (
-            <a>
+            <Link href="/dashboard/admin">
               <Settings />
               System settings
-            </a>
+            </Link>
           )}
         </nav>
         <button onClick={logout}>
@@ -327,8 +327,15 @@ function CandidateView({ data }: { data: any }) {
           title="Profession"
           value={data.profile?.profession || "Not set"}
         />
-        <Metric title="Applications" value="0" />
-        <Metric title="Interviews" value="0" />
+        <Metric title="Applications" value={data.applications?.length || 0} />
+        <Metric
+          title="Interviews"
+          value={
+            data.applications?.filter(
+              (item: any) => item.status === "interview",
+            ).length || 0
+          }
+        />
       </div>
       <section className="verification-card">
         <div className="panel-heading">
@@ -481,6 +488,7 @@ function StaffView({ data, admin }: { data: any; admin: boolean }) {
         </Link>
         <Link href="/dashboard/articles">Write an article</Link>
         <Link href="/dashboard/contracts">Contracts</Link>
+        <Link href="/dashboard/finance">Payments</Link>
         {admin && <Link href="/dashboard/admin">Administration controls</Link>}
       </div>
       <div className="metric-grid">
@@ -502,7 +510,7 @@ function StaffView({ data, admin }: { data: any; admin: boolean }) {
             Candidate recommendations remain explainable and require human
             approval.
           </p>
-          <button>Open matching workspace</button>
+          <Link href="/dashboard/matching">Open matching workspace</Link>
         </div>
       </div>
     </>
@@ -638,9 +646,6 @@ function Panel({
     <section className="dash-panel">
       <div className="panel-heading">
         <h2>{title}</h2>
-        <button>
-          View all <ChevronRight />
-        </button>
       </div>
       {rows.length ? (
         <div className="simple-rows">

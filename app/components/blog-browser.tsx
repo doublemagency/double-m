@@ -18,7 +18,14 @@ export function BlogBrowser({ initial }: { initial: Item[] }) {
       signal: controller.signal,
     })
       .then((r) => (r.ok ? r.json() : { articles: [] }))
-      .then((x) => setItems([...x.articles, ...initial]))
+      .then((x) => {
+        const remote = x.articles as Item[],
+          slugs = new Set(remote.map((item) => item.slug));
+        setItems([
+          ...remote,
+          ...initial.filter((item) => !slugs.has(item.slug)),
+        ]);
+      })
       .catch(() => {});
     return () => controller.abort();
   }, [initial]);
@@ -39,11 +46,11 @@ export function BlogBrowser({ initial }: { initial: Item[] }) {
       <section className="article-grid article-rail shell">
         {shown.map((a) => (
           <article key={a.slug}>
-          {a.cover_image && (
-            <div
-              className="article-cover"
-              style={{
-                backgroundImage: `url(${a.cover_image.startsWith("/")?a.cover_image:`${process.env.NEXT_PUBLIC_API_URL}/media/articles/${a.cover_image}`})`,
+            {a.cover_image && (
+              <div
+                className="article-cover"
+                style={{
+                  backgroundImage: `url(${a.cover_image.startsWith("/") ? a.cover_image : `${process.env.NEXT_PUBLIC_API_URL}/media/articles/${a.cover_image}`})`,
                 }}
               />
             )}

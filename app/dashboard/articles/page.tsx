@@ -108,8 +108,12 @@ export default function ArticleWorkspace() {
             <textarea name="excerpt" minLength={20} maxLength={320} required />
           </label>
           <label>
-            Article content
+            Rich article content
             <textarea name="content" minLength={200} rows={12} required />
+            <small>
+              Use safe HTML such as h2, h3, p, strong, blockquote, lists and
+              tables. Scripts, styles and unsafe links are removed.
+            </small>
           </label>
           <label>
             Cover image (JPG, PNG or WebP · maximum 2 MB)
@@ -156,6 +160,11 @@ export default function ArticleWorkspace() {
                 )}
                 {(admin || article.status !== "published") && (
                   <div>
+                    {(admin || article.status !== "published") && (
+                      <Link href={`/dashboard/articles/${article.id}`}>
+                        Edit
+                      </Link>
+                    )}
                     <button onClick={() => remove(article.id)}>Delete</button>
                   </div>
                 )}

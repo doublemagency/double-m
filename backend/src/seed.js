@@ -1,5 +1,10 @@
 import argon2 from "argon2";
+import { copyFile, mkdir, stat } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { db } from "./db.js";
+import { config } from "./config.js";
+import { seedArticles } from "./seed-articles.js";
 const accounts = [
   {
     email: "admin@doublemagency.co.ke",
@@ -60,6 +65,39 @@ try {
         admin.id,
       ],
     );
+  const articleImageRoot = path.resolve(config.UPLOAD_DIR, "article-images");
+  await mkdir(articleImageRoot, { recursive: true });
+  const repoRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../..",
+  );
+  for (const article of seedArticles) {
+    await conn.execute(
+      "INSERT INTO content_posts(slug,title,excerpt,content,status,author_user_id,published_at) VALUES(?,?,?,?, 'published',?,UTC_TIMESTAMP()) ON DUPLICATE KEY UPDATE slug=VALUES(slug)",
+      [article.slug, article.title, article.excerpt, article.content, admin.id],
+    );
+    const [[post]] = await conn.execute(
+      "SELECT id FROM content_posts WHERE slug=?",
+      [article.slug],
+    );
+    const filename = `seed-${article.slug}.webp`,
+      source = path.join(
+        repoRoot,
+        "public",
+        "images",
+        article.cover === "care" ? "care-story.webp" : "recruitment-hero.webp",
+      );
+    await copyFile(source, path.join(articleImageRoot, filename)).catch(
+      () => {},
+    );
+    const imageSize = await stat(path.join(articleImageRoot, filename))
+      .then((file) => file.size)
+      .catch(() => 0);
+    await conn.execute(
+      "INSERT INTO content_post_images(post_id,storage_key,mime_type,file_size) VALUES(?,?,'image/webp',?) ON DUPLICATE KEY UPDATE storage_key=VALUES(storage_key),file_size=VALUES(file_size)",
+      [post.id, filename, imageSize],
+    );
+  }
   await conn.commit();
   console.log(
     "Four protected test accounts seeded; password change is required on first sign-in.",

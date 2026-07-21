@@ -5,6 +5,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     paths = [
       "",
       "/about",
+      "/about/founder",
       "/services",
       "/jobs",
       "/hire",
@@ -13,6 +14,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
       "/faqs",
       "/testimonials",
       "/contact",
+      "/privacy",
+      "/fraud-safety",
       ...articles.map((a) => `/blog/${a.slug}`),
     ];
   return paths.map((path) => ({
