@@ -156,9 +156,9 @@ export default function Dashboard() {
                 <UsersRound />
                 Candidates
               </Link>
-              <Link href="/dashboard/matching">
+              <Link href="/dashboard/jobs">
                 <BriefcaseBusiness />
-                Employer requests
+                Job requests
               </Link>
               <Link href="/dashboard/jobs">
                 <BriefcaseBusiness />
@@ -244,7 +244,15 @@ export default function Dashboard() {
         <header className="dash-top">
           <div>
             <span>{labels[user.role]}</span>
-            <h1>Good to see you.</h1>
+            <h1>
+              {user.role === "administrator"
+                ? "Agency control centre"
+                : user.role === "agency_staff"
+                  ? "Placement workspace"
+                  : user.role === "employer"
+                    ? "Employer workspace"
+                    : "Job seeker workspace"}
+            </h1>
           </div>
           <div>
             <button aria-label="Notifications">

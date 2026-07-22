@@ -7,13 +7,16 @@ import {
   BriefcaseBusiness,
   CircleUserRound,
   ClipboardList,
+  CreditCard,
   FileCheck2,
   LayoutDashboard,
   LogOut,
   Menu,
+  Newspaper,
   RefreshCcw,
   Settings,
   ShieldCheck,
+  UserCog,
 } from "lucide-react";
 
 type User = { email: string; role: string; forcePasswordChange: boolean };
@@ -48,15 +51,29 @@ const roleItems: Record<string, NavItem[]> = {
     { href: "/dashboard/my-contracts", label: "Contracts", icon: FileCheck2 },
   ],
   agency_staff: [
+    {
+      href: "/dashboard/assisted-registration",
+      label: "Register client",
+      icon: UserCog,
+    },
     { href: "/dashboard/matching", label: "Matching", icon: BriefcaseBusiness },
-    { href: "/dashboard/jobs", label: "Jobs", icon: ClipboardList },
+    { href: "/dashboard/jobs", label: "Job requests", icon: ClipboardList },
     { href: "/dashboard/contracts", label: "Contracts", icon: FileCheck2 },
+    { href: "/dashboard/finance", label: "Payments", icon: CreditCard },
+    { href: "/dashboard/articles", label: "Articles", icon: Newspaper },
   ],
   administrator: [
-    { href: "/dashboard/matching", label: "Matching", icon: BriefcaseBusiness },
-    { href: "/dashboard/jobs", label: "Jobs", icon: ClipboardList },
+    {
+      href: "/dashboard/matching",
+      label: "Candidates & matching",
+      icon: BriefcaseBusiness,
+    },
+    { href: "/dashboard/jobs", label: "Job requests", icon: ClipboardList },
     { href: "/dashboard/contracts", label: "Contracts", icon: FileCheck2 },
-    { href: "/dashboard/admin", label: "Administration", icon: Settings },
+    { href: "/dashboard/finance", label: "Payments", icon: CreditCard },
+    { href: "/dashboard/articles", label: "Articles", icon: Newspaper },
+    { href: "/dashboard/admin/users", label: "Users & staff", icon: UserCog },
+    { href: "/dashboard/admin", label: "System control", icon: Settings },
   ],
 };
 

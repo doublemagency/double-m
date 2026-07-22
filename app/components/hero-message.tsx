@@ -29,8 +29,8 @@ export function HeroMessage() {
         </em>
       </h1>
       <p>
-        Double M provides qualified, vetted staff to suit your family, business
-        and childcare needs.{" "}
+        Double M places qualified, reliable and vetted staff that suits your
+        family, business and childcare needs.{" "}
         {whatsapp ? (
           <a
             href={`https://wa.me/${whatsapp}`}

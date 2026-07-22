@@ -13,6 +13,7 @@ import argon2 from "argon2";
 import { OAuth2Client } from "google-auth-library";
 import { SignJWT, jwtVerify } from "jose";
 import { z } from "zod";
+import PDFDocument from "pdfkit";
 import { config } from "./config.js";
 import { db } from "./db.js";
 import { queueEmail, templates } from "./email.js";
@@ -241,15 +242,13 @@ app.post("/api/v1/auth/register", authLimiter, async (req, res, next) => {
         ],
       );
       await conn.commit();
-      await queueEmail(
+      void queueEmail(
         v.email,
         v.accountType === "candidate"
           ? templates.candidateWelcome(v.fullName)
           : templates.employerWelcome(v.fullName),
       );
-      res
-        .status(201)
-        .json({ message: "Account created. Welcome email queued." });
+      res.status(201).json({ message: "Account created successfully." });
     } catch (e) {
       await conn.rollback();
       if (e.code === "ER_DUP_ENTRY")
@@ -308,6 +307,7 @@ app.post("/api/v1/auth/login", authLimiter, async (req, res, next) => {
 });
 app.post("/api/v1/auth/google", authLimiter, async (req, res, next) => {
   const connection = await db().getConnection();
+  let welcomeMessage = null;
   try {
     if (!config.GOOGLE_CLIENT_ID)
       return res
@@ -367,14 +367,10 @@ app.post("/api/v1/auth/google", authLimiter, async (req, res, next) => {
           "INSERT INTO employer_profiles(user_id,full_name) VALUES(?,?)",
           [user.id, name],
         );
-      const welcome =
+      welcomeMessage =
         v.role === "candidate"
           ? templates.candidateWelcome(name)
           : templates.employerWelcome(name);
-      await connection.execute(
-        "INSERT INTO email_outbox(recipient,subject,html) VALUES(?,?,?)",
-        [email, welcome.subject, welcome.html],
-      );
     } else {
       if (existing.status !== "active") {
         await connection.rollback();
@@ -389,6 +385,7 @@ app.post("/api/v1/auth/google", authLimiter, async (req, res, next) => {
         );
     }
     await connection.commit();
+    if (welcomeMessage) void queueEmail(email, welcomeMessage);
     res.cookie("dm_session", await tokenFor(user), cookie);
     res.json({
       user: {
@@ -558,13 +555,13 @@ app.post("/api/v1/staffing-requests", async (req, res, next) => {
         v.preferredContact,
       ],
     );
-    await queueEmail(
+    void queueEmail(
       v.email,
       templates.staffingRequestReceived(v.fullName, ref, v.roleNeeded),
     );
     res.status(201).json({
       reference: ref,
-      message: "Staffing request received. A confirmation email is queued.",
+      message: "Staffing request received successfully.",
     });
   } catch (e) {
     next(e);
@@ -630,7 +627,7 @@ app.post(
           value.preferredContact,
         ],
       );
-      await queueEmail(
+      void queueEmail(
         req.user.email,
         templates.staffingRequestReceived(
           profiles[0].full_name,
@@ -776,7 +773,7 @@ app.post(
       let requestInfo = null;
       if (v.staffingRequestId) {
         const [requests] = await db().execute(
-          "SELECT COALESCE(sr.employer_user_id,u.id) employer_user_id,sr.email,sr.reference_code,sr.role_needed FROM staffing_requests sr LEFT JOIN users u ON u.email=sr.email AND u.role='employer' WHERE sr.id=? AND sr.status NOT IN ('closed','cancelled') LIMIT 1",
+          "SELECT COALESCE(sr.employer_user_id,u.id) employer_user_id,sr.email,sr.reference_code,sr.role_needed,(SELECT id FROM jobs WHERE staffing_request_id=sr.id LIMIT 1) existing_job_id FROM staffing_requests sr LEFT JOIN users u ON u.email=sr.email AND u.role='employer' WHERE sr.id=? AND sr.status NOT IN ('closed','cancelled') LIMIT 1",
           [v.staffingRequestId],
         );
         if (!requests.length)
@@ -785,6 +782,10 @@ app.post(
           });
         const requestEmployerId = requests[0].employer_user_id || null;
         requestInfo = requests[0];
+        if (requestInfo.existing_job_id)
+          return res.status(409).json({
+            message: "This request is already linked to a job in the register.",
+          });
         if (
           employerUserId &&
           requestEmployerId &&
@@ -854,7 +855,7 @@ app.post(
       );
       if (v.publish) {
         if (requestInfo)
-          await queueEmail(
+          void queueEmail(
             requestInfo.email,
             templates.staffingRequestApproved(
               requestInfo.reference_code,
@@ -865,7 +866,7 @@ app.post(
           "SELECT u.email FROM users u JOIN job_alerts a ON a.user_id=u.id WHERE u.status='active' AND a.enabled=TRUE LIMIT 5000",
         );
         for (const recipient of alerts)
-          await queueEmail(
+          void queueEmail(
             recipient.email,
             templates.jobAlert(v.title, v.location),
           );
@@ -873,7 +874,7 @@ app.post(
       res.status(201).json({
         reference: ref,
         message: v.publish
-          ? "Job published and matching alerts queued."
+          ? "Job approved and published. Matching alerts are being sent."
           : "Job saved as a draft.",
       });
     } catch (e) {
@@ -892,10 +893,29 @@ app.get(
           "SELECT u.id,u.email,COALESCE(ep.full_name,u.email) full_name FROM users u LEFT JOIN employer_profiles ep ON ep.user_id=u.id WHERE u.role='employer' AND u.status='active' ORDER BY full_name",
         ),
         db().query(
-          "SELECT sr.id,sr.reference_code,sr.role_needed,sr.location,COALESCE(sr.employer_user_id,u.id) employer_user_id FROM staffing_requests sr LEFT JOIN users u ON u.email=sr.email AND u.role='employer' WHERE sr.status NOT IN ('closed','cancelled') ORDER BY sr.created_at DESC LIMIT 100",
+          `SELECT sr.id,sr.reference_code,sr.full_name,sr.phone,sr.email,
+            sr.role_needed,sr.location,sr.requirements,sr.preferred_contact,
+            sr.status,sr.created_at,COALESCE(sr.employer_user_id,u.id) employer_user_id,
+            j.id job_id,j.reference_code job_reference,j.status job_status,
+            COUNT(DISTINCT a.id) applicant_count
+           FROM staffing_requests sr
+           LEFT JOIN users u ON u.email=sr.email AND u.role='employer'
+           LEFT JOIN jobs j ON j.staffing_request_id=sr.id
+           LEFT JOIN applications a ON a.job_id=j.id
+           GROUP BY sr.id,j.id
+           ORDER BY sr.created_at DESC LIMIT 100`,
         ),
         db().query(
-          "SELECT j.id,j.reference_code,j.title,j.location,j.status,j.created_at,u.email employer_email,creator.email created_by_email FROM jobs j LEFT JOIN users u ON u.id=j.employer_user_id LEFT JOIN users creator ON creator.id=j.created_by ORDER BY j.created_at DESC LIMIT 100",
+          `SELECT j.id,j.reference_code,j.title,j.location,j.employment_type,j.status,
+            j.created_at,u.email employer_email,creator.email created_by_email,
+            sr.reference_code request_reference,COUNT(DISTINCT a.id) applicant_count
+           FROM jobs j
+           LEFT JOIN users u ON u.id=j.employer_user_id
+           LEFT JOIN users creator ON creator.id=j.created_by
+           LEFT JOIN staffing_requests sr ON sr.id=j.staffing_request_id
+           LEFT JOIN applications a ON a.job_id=j.id
+           GROUP BY j.id,sr.id
+           ORDER BY j.created_at DESC LIMIT 100`,
         ),
       ]);
       res.json({ employers, requests, jobs });
@@ -1346,6 +1366,155 @@ app.get("/api/v1/contracts/:id", requireAuth, async (req, res, next) => {
     });
   } catch (e) {
     next(e);
+  }
+});
+app.get("/api/v1/contracts/:id/pdf", requireAuth, async (req, res, next) => {
+  try {
+    const id = z.coerce.number().int().positive().parse(req.params.id);
+    const [rows] = await db().execute(
+      `SELECT ec.*,COALESCE(ep.full_name,ue.email) employer_name,
+        COALESCE(cp.full_name,uc.email) candidate_name,ue.email employer_email,
+        uc.email candidate_email,j.reference_code job_reference
+       FROM employment_contracts ec
+       JOIN users ue ON ue.id=ec.employer_user_id
+       JOIN users uc ON uc.id=ec.candidate_user_id
+       LEFT JOIN employer_profiles ep ON ep.user_id=ec.employer_user_id
+       LEFT JOIN candidate_profiles cp ON cp.user_id=ec.candidate_user_id
+       LEFT JOIN jobs j ON j.id=ec.job_id
+       WHERE ec.id=? AND ec.status='fully_signed'
+       AND (? IN ('administrator','agency_staff') OR ec.employer_user_id=? OR ec.candidate_user_id=?)`,
+      [id, req.user.role, req.user.id, req.user.id],
+    );
+    const contract = rows[0];
+    if (!contract)
+      return res.status(404).json({
+        message: "A fully signed contract is required before downloading.",
+      });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${contract.contract_number}.pdf"`,
+    );
+    res.setHeader("Cache-Control", "private, no-store");
+
+    const document = new PDFDocument({ size: "A4", margin: 48 });
+    document.pipe(res);
+    const plum = "#4b174d",
+      rose = "#d81b72",
+      ink = "#211723",
+      muted = "#6f6670";
+    const logoPath = path.resolve("../public/brand/logo.jpeg");
+    try {
+      document.image(logoPath, 48, 42, { fit: [58, 58] });
+    } catch {}
+    document
+      .fillColor(plum)
+      .font("Helvetica-Bold")
+      .fontSize(11)
+      .text("DOUBLE M AGENCY", 120, 48)
+      .fontSize(20)
+      .text("Employment & Placement Agreement", 120, 66)
+      .fillColor(muted)
+      .font("Helvetica")
+      .fontSize(9)
+      .text(`Contract ${contract.contract_number}`, 120, 93);
+    document
+      .moveTo(48, 116)
+      .lineTo(547, 116)
+      .lineWidth(2)
+      .strokeColor(rose)
+      .stroke();
+
+    const fact = (label, value, x, y) => {
+      document
+        .fillColor(muted)
+        .font("Helvetica-Bold")
+        .fontSize(8)
+        .text(label.toUpperCase(), x, y);
+      document
+        .fillColor(ink)
+        .font("Helvetica")
+        .fontSize(10)
+        .text(String(value || "Not specified"), x, y + 13, { width: 230 });
+    };
+    fact("Employer", contract.employer_name, 48, 136);
+    fact("Employee", contract.candidate_name, 305, 136);
+    fact("Role", contract.role_title, 48, 180);
+    fact(
+      "Job reference",
+      contract.job_reference || "Direct placement",
+      305,
+      180,
+    );
+    fact(
+      "Start date",
+      new Date(contract.start_date).toLocaleDateString("en-KE"),
+      48,
+      224,
+    );
+    fact(
+      "Monthly salary",
+      `KES ${Number(contract.salary_amount || 0).toLocaleString("en-KE")}`,
+      305,
+      224,
+    );
+
+    document.y = 280;
+    document
+      .fillColor(plum)
+      .font("Helvetica-Bold")
+      .fontSize(14)
+      .text("Agreement terms");
+    const plainTerms = sanitizeHtml(contract.terms_snapshot, {
+      allowedTags: [],
+      allowedAttributes: {},
+    })
+      .replace(/\s+/g, " ")
+      .trim();
+    document
+      .moveDown(0.5)
+      .fillColor(ink)
+      .font("Helvetica")
+      .fontSize(9.5)
+      .text(plainTerms, {
+        align: "justify",
+        lineGap: 3,
+      });
+    document.moveDown(1.4);
+    document
+      .fillColor(plum)
+      .font("Helvetica-Bold")
+      .fontSize(13)
+      .text("Recorded signatures");
+    const signatureY = document.y + 14;
+    fact("Employer signature", contract.employer_signed_name, 48, signatureY);
+    fact(
+      "Signed",
+      new Date(contract.employer_signed_at).toLocaleString("en-KE"),
+      48,
+      signatureY + 42,
+    );
+    fact("Employee signature", contract.candidate_signed_name, 305, signatureY);
+    fact(
+      "Signed",
+      new Date(contract.candidate_signed_at).toLocaleString("en-KE"),
+      305,
+      signatureY + 42,
+    );
+    document
+      .fillColor(muted)
+      .font("Helvetica")
+      .fontSize(8)
+      .text(
+        "This PDF is generated from the completed, versioned Double M Agency contract record. Keep it for your files.",
+        48,
+        790,
+        { width: 499, align: "center" },
+      );
+    document.end();
+  } catch (error) {
+    next(error);
   }
 });
 app.post(
@@ -1847,7 +2016,7 @@ app.post(
           "INSERT INTO password_reset_tokens(user_id,token_hash,expires_at) VALUES(?,?,DATE_ADD(UTC_TIMESTAMP(),INTERVAL 30 MINUTE))",
           [rows[0].id, hash],
         );
-        await queueEmail(
+        void queueEmail(
           email,
           templates.passwordReset(
             `${config.APP_URL}/reset-password?token=${token}`,
@@ -1969,7 +2138,7 @@ app.post(
       } finally {
         conn.release();
       }
-      await queueEmail(
+      void queueEmail(
         v.email,
         v.role === "candidate"
           ? templates.candidateWelcome(v.fullName)
@@ -2099,7 +2268,7 @@ app.post(
       } finally {
         conn.release();
       }
-      await queueEmail(
+      void queueEmail(
         requests[0].email,
         templates.shortlistReady(
           requests[0].reference_code,

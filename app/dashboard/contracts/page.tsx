@@ -221,6 +221,15 @@ export default function Contracts() {
                       ? `by ${c.last_edited_by_email}`
                       : ""}
                   </small>
+                  {c.status === "fully_signed" && (
+                    <a
+                      className="table-action"
+                      href={`${process.env.NEXT_PUBLIC_API_URL}/contracts/${c.id}/pdf`}
+                      download={`${c.contract_number}.pdf`}
+                    >
+                      Download PDF
+                    </a>
+                  )}
                 </span>
               </div>
             ))}

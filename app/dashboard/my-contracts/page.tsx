@@ -81,6 +81,14 @@ export default function MyContracts() {
             <div className="contract-toolbar">
               <button onClick={() => setSelected(null)}>Close</button>
               <button onClick={() => window.print()}>Print / save PDF</button>
+              {selected.contract.status === "fully_signed" && (
+                <a
+                  href={`${process.env.NEXT_PUBLIC_API_URL}/contracts/${selected.contract.id}/pdf`}
+                  download={`${selected.contract.contract_number}.pdf`}
+                >
+                  Download completed PDF
+                </a>
+              )}
             </div>
             <header className="contract-letterhead">
               <Image

@@ -40,18 +40,21 @@ export const metadata: Metadata = {
 const services = [
   {
     icon: HeartHandshake,
-    title: "Househelps, nannies & caregivers",
-    text: "Live-in and dayburg nannies, househelps, house managers, cooks, cleaners and elderly caregivers.",
+    image: "/images/service-nanny.webp",
+    title: "Nannies & househelps",
+    text: "Playful childcare, dayburg nannies, live-in househelps, house managers, cooks and cleaners.",
   },
   {
     icon: UsersRound,
-    title: "Shamba boys & drivers",
-    text: "Dependable shamba boys, farm workers, drivers, security staff and hands-on support workers.",
+    image: "/images/service-caregiver.webp",
+    title: "Caregivers & home support",
+    text: "Compassionate caregivers supporting older people and families with dignity, patience and practical care.",
   },
   {
     icon: BriefcaseBusiness,
-    title: "Shop & business staff",
-    text: "Shop attendants, office assistants, hospitality workers, sales staff and skilled professionals.",
+    image: "/images/service-shamba.webp",
+    title: "Shamba boys & practical staff",
+    text: "Dependable shamba boys, drivers, shop attendants, security staff and hands-on support workers.",
   },
 ];
 
@@ -153,15 +156,25 @@ export default function Home() {
       </section>
       <section className="services-window shell reveal-section">
         <AutoScrollRail className="services" label="Staffing services">
-          {services.map(({ icon: Icon, title, text }, i) => (
+          {services.map(({ icon: Icon, image, title, text }, i) => (
             <article className="service-card" key={title}>
-              <span className="service-no">0{i + 1}</span>
-              <Icon />
-              <h3>{title}</h3>
-              <p>{text}</p>
-              <Link href="/hire">
-                Explore service <ChevronRight size={16} />
-              </Link>
+              <div className="service-card-image">
+                <Image
+                  src={image}
+                  fill
+                  sizes="(max-width: 620px) 70vw, 33vw"
+                  alt=""
+                />
+              </div>
+              <div className="service-card-content">
+                <span className="service-no">0{i + 1}</span>
+                <Icon />
+                <h3>{title}</h3>
+                <p>{text}</p>
+                <Link href="/hire">
+                  Explore service <ChevronRight size={16} />
+                </Link>
+              </div>
             </article>
           ))}
         </AutoScrollRail>

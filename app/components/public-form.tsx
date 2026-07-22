@@ -1,6 +1,7 @@
 "use client";
 import { FormEvent, useState } from "react";
 import { PasswordField } from "./password-field";
+import Link from "next/link";
 
 export function PublicForm({ kind }: { kind: "candidate" | "employer" }) {
   const [state, setState] = useState<"idle" | "sending" | "done" | "error">(
@@ -48,6 +49,11 @@ export function PublicForm({ kind }: { kind: "candidate" | "employer" }) {
             ? "Check your email to verify your account and continue your profile."
             : "Our team will review your request and contact you through your preferred channel."}
         </p>
+        {kind === "candidate" && (
+          <Link className="button dark" href="/login">
+            Proceed to login
+          </Link>
+        )}
       </div>
     );
   return (

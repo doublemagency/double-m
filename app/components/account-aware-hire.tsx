@@ -5,7 +5,6 @@ import { PublicForm } from "./public-form";
 
 export function AccountAwareHire() {
   const [role, setRole] = useState<string | null>(null);
-  const [checked, setChecked] = useState(false);
   useEffect(() => {
     fetch(`${process.env.NEXT_PUBLIC_API_URL}/dashboard`, {
       credentials: "include",
@@ -13,10 +12,8 @@ export function AccountAwareHire() {
       .then(async (response) =>
         response.ok ? setRole((await response.json()).user?.role) : undefined,
       )
-      .catch(() => {})
-      .finally(() => setChecked(true));
+      .catch(() => {});
   }, []);
-  if (!checked) return <p>Preparing the secure request form…</p>;
   if (role === "employer")
     return (
       <div className="account-request-callout">

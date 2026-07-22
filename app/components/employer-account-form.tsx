@@ -1,8 +1,10 @@
 "use client";
 import { FormEvent, useState } from "react";
 import { PasswordField } from "./password-field";
+import Link from "next/link";
 export function EmployerAccountForm() {
   const [status, setStatus] = useState("");
+  const [complete, setComplete] = useState(false);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setStatus("Sending…");
@@ -26,6 +28,7 @@ export function EmployerAccountForm() {
           ? "Your account is ready. Check your email for a welcome message."
           : b.issues?.[0]?.message || b.message || "Registration failed.",
       );
+      setComplete(r.ok);
     } catch {
       setStatus("We could not connect securely. Please try again.");
     }
@@ -69,6 +72,11 @@ export function EmployerAccountForm() {
       </label>
       <button className="button dark">Create employer workspace</button>
       {status && <p aria-live="polite">{status}</p>}
+      {complete && (
+        <Link className="button dark" href="/login">
+          Proceed to login
+        </Link>
+      )}
     </form>
   );
 }
