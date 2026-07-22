@@ -1,9 +1,17 @@
 "use client";
-import { FormEvent, useState } from "react";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 const api = process.env.NEXT_PUBLIC_API_URL;
 export default function ClientSupport() {
   const [message, setMessage] = useState("");
+  const [placements, setPlacements] = useState<any[]>([]);
+  useEffect(() => {
+    fetch(`${api}/dashboard`, { credentials: "include" })
+      .then((response) => response.json())
+      .then((body) => setPlacements(body.data?.placements || []))
+      .catch(() => setMessage("Your placement records could not be loaded."));
+  }, []);
   async function submit(e: FormEvent<HTMLFormElement>, path: string) {
     e.preventDefault();
     setMessage("Sending…");
@@ -33,7 +41,14 @@ export default function ClientSupport() {
           <h2>Request a replacement</h2>
           <label>
             Placement number
-            <input name="placementId" type="number" required />
+            <select name="placementId" required>
+              <option value="">Choose your placement</option>
+              {placements.map((placement) => (
+                <option key={placement.id} value={placement.id}>
+                  #{placement.id} · {placement.role_title} · {placement.status}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             What happened?
@@ -45,7 +60,14 @@ export default function ClientSupport() {
           <h2>Extend a contract</h2>
           <label>
             Placement number
-            <input name="placementId" type="number" required />
+            <select name="placementId" required>
+              <option value="">Choose your placement</option>
+              {placements.map((placement) => (
+                <option key={placement.id} value={placement.id}>
+                  #{placement.id} · {placement.role_title} · {placement.status}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             Requested end date
@@ -61,7 +83,14 @@ export default function ClientSupport() {
           <h2>Leave a review</h2>
           <label>
             Placement number (optional)
-            <input name="placementId" type="number" />
+            <select name="placementId">
+              <option value="">General agency review</option>
+              {placements.map((placement) => (
+                <option key={placement.id} value={placement.id}>
+                  #{placement.id} · {placement.role_title}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             Rating

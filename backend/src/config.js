@@ -14,6 +14,7 @@ export const config = z
     DATABASE_PASSWORD: z.string().default(""),
     JWT_SECRET: z.string().min(32),
     GOOGLE_CLIENT_ID: z.string().optional(),
+    MPESA_CALLBACK_TOKEN: z.string().min(24).optional(),
     COOKIE_DOMAIN: z.string().optional(),
     SMTP_HOST: z.string().optional(),
     SMTP_PORT: z.coerce.number().default(587),

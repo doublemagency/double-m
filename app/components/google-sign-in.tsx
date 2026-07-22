@@ -51,22 +51,26 @@ export function GoogleSignIn({ role }: { role?: "candidate" | "employer" }) {
       text: role ? "signup_with" : "signin_with",
     });
   }
-  if (!clientId)
-    return (
-      <small>
-        Google (Gmail) access will appear when the secure OAuth key is
-        configured.
-      </small>
-    );
   return (
-    <>
-      <Script
-        src="https://accounts.google.com/gsi/client"
-        strategy="afterInteractive"
-        onLoad={ready}
-      />
-      <div ref={container} />
+    <div className="google-auth-block">
+      <div className="auth-divider">
+        <span>or</span>
+      </div>
+      {clientId ? (
+        <>
+          <Script
+            src="https://accounts.google.com/gsi/client"
+            strategy="afterInteractive"
+            onLoad={ready}
+          />
+          <div className="google-button" ref={container} />
+        </>
+      ) : (
+        <button className="google-button-fallback" type="button" disabled>
+          <span>G</span> {role ? "Sign up with Google" : "Sign in with Google"}
+        </button>
+      )}
       {error && <p className="form-error">{error}</p>}
-    </>
+    </div>
   );
 }

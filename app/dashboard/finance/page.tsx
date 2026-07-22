@@ -7,6 +7,9 @@ export default function Finance() {
       transactions: [],
       prices: [],
       methods: [],
+      payers: [],
+      contracts: [],
+      feeBands: [],
     }),
     [message, setMessage] = useState("");
   async function load() {
@@ -34,6 +37,7 @@ export default function Finance() {
           body: JSON.stringify({
             payerEmail: form.get("payerEmail"),
             servicePriceId: price?.id,
+            contractId: form.get("contractId") || undefined,
             purpose: form.get("purpose"),
             amount: form.get("amount"),
             currency: "KES",
@@ -83,8 +87,53 @@ export default function Finance() {
         <form onSubmit={create}>
           <h2>New payment record</h2>
           <label>
-            Payer account email
-            <input name="payerEmail" type="email" required />
+            Payer account
+            <select name="payerEmail" required>
+              <option value="">Choose a registered payer</option>
+              {data.payers.map((payer: any) => (
+                <option key={payer.id} value={payer.email}>
+                  {payer.full_name} · {payer.email} ({payer.role})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Related contract
+            <select
+              name="contractId"
+              onChange={(event) => {
+                const contract = data.contracts.find(
+                    (item: any) => String(item.id) === event.target.value,
+                  ),
+                  form = event.currentTarget.form;
+                if (!contract || !form) return;
+                const payer = form.elements.namedItem(
+                  "payerEmail",
+                ) as HTMLSelectElement;
+                const purpose = form.elements.namedItem(
+                  "purpose",
+                ) as HTMLInputElement;
+                const amount = form.elements.namedItem(
+                  "amount",
+                ) as HTMLInputElement;
+                const employer = payer.value === contract.employer_email;
+                purpose.value = employer
+                  ? `Agency fee · ${contract.contract_number}`
+                  : `Candidate agency contribution · ${contract.contract_number}`;
+                amount.value = String(
+                  employer
+                    ? contract.agency_fee_amount || ""
+                    : contract.candidate_fee_amount || "",
+                );
+              }}
+            >
+              <option value="">No contract selected</option>
+              {data.contracts.map((contract: any) => (
+                <option key={contract.id} value={contract.id}>
+                  {contract.contract_number} · {contract.role_title}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             Configured service
@@ -125,7 +174,7 @@ export default function Finance() {
           <label>
             Payment method
             <select name="methodCode">
-              <option value="">Not selected</option>
+              <option value="">Auto-detect from reference</option>
               {data.methods.map((x: any) => (
                 <option key={x.method_code} value={x.method_code}>
                   {x.display_name}
@@ -134,8 +183,15 @@ export default function Finance() {
             </select>
           </label>
           <label>
-            External reference (optional until verified)
-            <input name="externalReference" />
+            M-Pesa receipt or cash reference
+            <input
+              name="externalReference"
+              placeholder="e.g. QAB12CD34E or CASH-001"
+            />
+            <small>
+              A valid 10-character M-Pesa receipt is detected automatically.
+              Cash remains staff-verified.
+            </small>
           </label>
           <button>Create payment record</button>
         </form>
@@ -170,7 +226,7 @@ export default function Finance() {
                     <td>
                       <span className="payment-status">{x.status}</span>
                     </td>
-                    <td>{x.receipt_number || "—"}</td>
+                    <td>{x.receipt_number || x.reference_code}</td>
                     <td>
                       {x.status !== "paid" && (
                         <button onClick={() => paid(x.id)}>

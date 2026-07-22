@@ -17,15 +17,25 @@ function ResetForm() {
         body: JSON.stringify({ token, password }),
       },
     );
-    setMessage((await r.json()).message);
+    const body = await r.json();
+    setMessage(body.issues?.[0]?.message || body.message);
   }
   return (
     <form className="form-panel" onSubmit={submit}>
       <h1>Choose a new password</h1>
-      <p>Use at least 10 characters and avoid a password used elsewhere.</p>
+      <p>
+        Use 8 or more characters with a capital letter, lowercase letter and
+        number.
+      </p>
       <label>
         New password
-        <input name="password" type="password" minLength={10} required />
+        <input
+          name="password"
+          type="password"
+          minLength={8}
+          pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{8,}"
+          required
+        />
       </label>
       <button className="button dark">Save my new password</button>
       {message && <p role="status">{message}</p>}

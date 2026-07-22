@@ -17,17 +17,26 @@ export default function Security() {
       },
     );
     const b = await r.json();
-    setMessage(b.message);
+    setMessage(b.issues?.[0]?.message || b.message);
     if (r.ok) setTimeout(() => router.replace("/login"), 1200);
   }
   return (
     <main className="login-page">
       <form className="form-panel" onSubmit={submit}>
         <h1>Choose a private password</h1>
-        <p>Use at least 10 characters. Do not reuse the temporary password.</p>
+        <p>
+          Use 8 or more characters with a capital letter, lowercase letter and
+          number. Do not reuse the temporary password.
+        </p>
         <label>
           New password
-          <input name="password" type="password" minLength={10} required />
+          <input
+            name="password"
+            type="password"
+            minLength={8}
+            pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{8,}"
+            required
+          />
         </label>
         <button className="button dark">Update password</button>
         {message && <p>{message}</p>}

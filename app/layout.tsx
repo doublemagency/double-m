@@ -23,6 +23,11 @@ export const metadata: Metadata = {
   },
   description:
     "Careful, human recruitment for homes, farms and businesses. Find genuine opportunities or request screened staff through Double M Agency.",
+  icons: {
+    icon: "/brand/logo.jpeg",
+    shortcut: "/brand/logo.jpeg",
+    apple: "/brand/logo.jpeg",
+  },
   robots: { index: true, follow: true },
   openGraph: {
     title: "Double M Agency",

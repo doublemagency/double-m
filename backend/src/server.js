@@ -159,6 +159,13 @@ const allow =
       : res
           .status(403)
           .json({ message: "You do not have permission for this action." });
+const strongPassword = z
+  .string()
+  .min(8, "Password must be at least 8 characters.")
+  .max(128)
+  .regex(/[a-z]/, "Password must include a lowercase letter.")
+  .regex(/[A-Z]/, "Password must include a capital letter.")
+  .regex(/[0-9]/, "Password must include a number.");
 const registration = z.object({
   fullName: z.string().trim().min(2).max(150),
   phone: z.string().trim().min(7).max(30),
@@ -167,7 +174,7 @@ const registration = z.object({
     .email()
     .max(254)
     .transform((v) => v.toLowerCase()),
-  password: z.string().min(10).max(128),
+  password: strongPassword,
   accountType: z.enum(["candidate", "employer"]).default("candidate"),
   profession: z.string().trim().max(120).optional(),
   location: z.string().trim().min(2).max(160),
@@ -340,7 +347,7 @@ app.post("/api/v1/auth/google", authLimiter, async (req, res, next) => {
       const name = (payload.name || email.split("@")[0]).slice(0, 150);
       if (v.role === "candidate")
         await connection.execute(
-          "INSERT INTO candidate_profiles(user_id,full_name,phone,profession,location) VALUES(?,?,'','General worker','Kenya')",
+          "INSERT INTO candidate_profiles(user_id,full_name,phone,profession,location) VALUES(?,?,'','','')",
           [user.id, name],
         );
       else
@@ -398,7 +405,7 @@ app.post(
   async (req, res, next) => {
     try {
       const { password } = z
-        .object({ password: z.string().min(10).max(128) })
+        .object({ password: strongPassword })
         .parse(req.body);
       const hash = await argon2.hash(password, { type: argon2.argon2id });
       await db().execute(
@@ -664,17 +671,43 @@ app.post(
             ]),
             benefits: z.string().max(1000).optional(),
             applicationDeadline: z.string().optional(),
+            employerUserId: z.coerce.number().int().positive().optional(),
+            staffingRequestId: z.coerce.number().int().positive().optional(),
             publish: z.boolean().default(false),
           })
           .parse(req.body),
         ref = `JOB-${new Date().getUTCFullYear()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
         conn = await db().getConnection();
+      let employerUserId = v.employerUserId || null;
+      if (v.staffingRequestId) {
+        const [requests] = await db().execute(
+          "SELECT u.id employer_user_id FROM staffing_requests sr LEFT JOIN users u ON u.email=sr.email AND u.role='employer' WHERE sr.id=? AND sr.status NOT IN ('closed','cancelled') LIMIT 1",
+          [v.staffingRequestId],
+        );
+        if (!requests.length)
+          return res.status(400).json({
+            message: "Choose an open recruitment request.",
+          });
+        const requestEmployerId = requests[0].employer_user_id || null;
+        if (
+          employerUserId &&
+          requestEmployerId &&
+          Number(employerUserId) !== Number(requestEmployerId)
+        )
+          return res.status(400).json({
+            message: "The selected request belongs to a different employer.",
+          });
+        employerUserId = requestEmployerId || employerUserId;
+      }
       let jobId;
       try {
         await conn.beginTransaction();
         const [created] = await conn.execute(
-          "INSERT INTO jobs(reference_code,title,location,employment_type,description,status,application_deadline) VALUES(?,?,?,?,?,?,?)",
+          "INSERT INTO jobs(staffing_request_id,employer_user_id,created_by,reference_code,title,location,employment_type,description,status,application_deadline) VALUES(?,?,?,?,?,?,?,?,?,?)",
           [
+            v.staffingRequestId || null,
+            employerUserId,
+            req.user.id,
             ref,
             v.title,
             v.location,
@@ -707,6 +740,10 @@ app.post(
       } finally {
         conn.release();
       }
+      await db().execute(
+        "INSERT INTO staff_activity(staff_user_id,action_code,entity_type,entity_id,context) VALUES(?,'job.created','job',?,JSON_OBJECT('reference',?,'employer_id',?))",
+        [req.user.id, String(jobId), ref, employerUserId],
+      );
       if (v.publish) {
         const [alerts] = await db().query(
           "SELECT u.email FROM users u JOIN job_alerts a ON a.user_id=u.id WHERE u.status='active' AND a.enabled=TRUE LIMIT 5000",
@@ -725,6 +762,29 @@ app.post(
       });
     } catch (e) {
       next(e);
+    }
+  },
+);
+app.get(
+  "/api/v1/staff/job-options",
+  requireAuth,
+  allow("administrator", "agency_staff"),
+  async (_req, res, next) => {
+    try {
+      const [[employers], [requests], [jobs]] = await Promise.all([
+        db().query(
+          "SELECT u.id,u.email,COALESCE(ep.full_name,u.email) full_name FROM users u LEFT JOIN employer_profiles ep ON ep.user_id=u.id WHERE u.role='employer' AND u.status='active' ORDER BY full_name",
+        ),
+        db().query(
+          "SELECT sr.id,sr.reference_code,sr.role_needed,sr.location,u.id employer_user_id FROM staffing_requests sr LEFT JOIN users u ON u.email=sr.email AND u.role='employer' WHERE sr.status NOT IN ('closed','cancelled') ORDER BY sr.created_at DESC LIMIT 100",
+        ),
+        db().query(
+          "SELECT j.id,j.reference_code,j.title,j.location,j.status,j.created_at,u.email employer_email,creator.email created_by_email FROM jobs j LEFT JOIN users u ON u.id=j.employer_user_id LEFT JOIN users creator ON creator.id=j.created_by ORDER BY j.created_at DESC LIMIT 100",
+        ),
+      ]);
+      res.json({ employers, requests, jobs });
+    } catch (error) {
+      next(error);
     }
   },
 );
@@ -801,7 +861,7 @@ app.get(
   async (_req, res, next) => {
     try {
       const [rows] = await db().query(
-        "SELECT id,name,version,terms_html,is_active,updated_at FROM contract_templates WHERE is_active=TRUE ORDER BY version DESC LIMIT 1",
+        "SELECT ct.id,ct.name,ct.version,ct.terms_html,ct.is_active,ct.updated_at,u.email updated_by_email FROM contract_templates ct JOIN users u ON u.id=ct.updated_by WHERE ct.is_active=TRUE ORDER BY ct.version DESC LIMIT 1",
       );
       res.json({ template: rows[0] || null });
     } catch (e) {
@@ -863,7 +923,7 @@ app.get(
   allow("administrator", "agency_staff"),
   async (_req, res, next) => {
     try {
-      const [[employers], [candidates], [jobs], [templates]] =
+      const [[employers], [candidates], [jobs], [templates], [feeBands]] =
         await Promise.all([
           db().query(
             "SELECT u.id,u.email,ep.full_name FROM users u LEFT JOIN employer_profiles ep ON ep.user_id=u.id WHERE u.role='employer' AND u.status='active' ORDER BY ep.full_name",
@@ -877,8 +937,17 @@ app.get(
           db().query(
             "SELECT id,name,version FROM contract_templates WHERE is_active=TRUE ORDER BY version DESC LIMIT 1",
           ),
+          db().query(
+            "SELECT salary_min,salary_max,fee_amount FROM fee_bands WHERE payer_role='employer' AND is_active=TRUE ORDER BY salary_min",
+          ),
         ]);
-      res.json({ employers, candidates, jobs, template: templates[0] || null });
+      res.json({
+        employers,
+        candidates,
+        jobs,
+        template: templates[0] || null,
+        feeBands,
+      });
     } catch (e) {
       next(e);
     }
@@ -896,6 +965,8 @@ app.post(
           candidateUserId: z.coerce.number().int().positive(),
           jobId: z.coerce.number().int().positive().optional(),
           roleTitle: z.string().min(2).max(180),
+          anticipatedSalary: z.coerce.number().positive().max(10000000),
+          candidateFeeAmount: z.coerce.number().min(0).max(10000000).default(0),
           startDate: z.string().date(),
           endDate: z.string().date().optional(),
           send: z.boolean().default(true),
@@ -920,6 +991,15 @@ app.post(
         return res
           .status(400)
           .json({ message: "Choose active employer and candidate accounts." });
+      const [[feeBand]] = await db().execute(
+        "SELECT fee_amount FROM fee_bands WHERE payer_role='employer' AND is_active=TRUE AND ? BETWEEN salary_min AND salary_max ORDER BY salary_min DESC LIMIT 1",
+        [v.anticipatedSalary],
+      );
+      if (!feeBand)
+        return res.status(400).json({
+          message:
+            "No approved agency charge covers this salary. Ask an administrator to add the fee before creating the contract.",
+        });
       const esc = (x) =>
         String(x || "").replace(
           /[&<>\"']/g,
@@ -939,13 +1019,16 @@ app.post(
         "{{start_date}}": v.startDate,
         "{{end_date}}": v.endDate || "Open-ended",
         "{{contract_date}}": new Date().toISOString().slice(0, 10),
+        "{{salary_amount}}": `KES ${Number(v.anticipatedSalary).toLocaleString()}`,
+        "{{agency_fee_amount}}": `KES ${Number(feeBand.fee_amount).toLocaleString()}`,
+        "{{candidate_fee_amount}}": `KES ${Number(v.candidateFeeAmount).toLocaleString()}`,
       };
       let snapshot = template.terms_html;
       for (const [token, value] of Object.entries(values))
         snapshot = snapshot.replaceAll(token, esc(value));
       const number = `DMC-${new Date().getUTCFullYear()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
       await db().execute(
-        "INSERT INTO employment_contracts(contract_number,template_id,template_version,employer_user_id,candidate_user_id,job_id,role_title,start_date,end_date,terms_snapshot,status,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO employment_contracts(contract_number,template_id,template_version,employer_user_id,candidate_user_id,job_id,role_title,salary_amount,agency_fee_amount,candidate_fee_amount,start_date,end_date,terms_snapshot,status,created_by,last_edited_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [
           number,
           template.id,
@@ -954,11 +1037,29 @@ app.post(
           v.candidateUserId,
           v.jobId || null,
           v.roleTitle,
+          v.anticipatedSalary,
+          feeBand.fee_amount,
+          v.candidateFeeAmount,
           v.startDate,
           v.endDate || null,
           snapshot,
           v.send ? "sent" : "draft",
           req.user.id,
+          req.user.id,
+        ],
+      );
+      const [[createdContract]] = await db().execute(
+        "SELECT id FROM employment_contracts WHERE contract_number=?",
+        [number],
+      );
+      await db().execute(
+        "INSERT INTO staff_activity(staff_user_id,action_code,entity_type,entity_id,context) VALUES(?,'contract.created','employment_contract',?,JSON_OBJECT('contract_number',?,'employer_id',?,'candidate_id',?))",
+        [
+          req.user.id,
+          String(createdContract.id),
+          number,
+          v.employerUserId,
+          v.candidateUserId,
         ],
       );
       res.status(201).json({
@@ -984,7 +1085,7 @@ app.get("/api/v1/contracts", requireAuth, async (req, res, next) => {
       params = [req.user.id];
     }
     const [contracts] = await db().execute(
-      `SELECT ec.id,ec.contract_number,ec.role_title,ec.start_date,ec.end_date,ec.status,ec.employer_signed_at,ec.candidate_signed_at,ec.created_at,j.reference_code job_reference,j.title job_title FROM employment_contracts ec LEFT JOIN jobs j ON j.id=ec.job_id ${where} ORDER BY ec.created_at DESC LIMIT 100`,
+      `SELECT ec.id,ec.contract_number,ec.role_title,ec.salary_amount,ec.agency_fee_amount,ec.candidate_fee_amount,ec.start_date,ec.end_date,ec.status,ec.employer_signed_at,ec.candidate_signed_at,ec.created_at,ec.updated_at,editor.email last_edited_by_email,j.reference_code job_reference,j.title job_title FROM employment_contracts ec LEFT JOIN jobs j ON j.id=ec.job_id LEFT JOIN users editor ON editor.id=ec.last_edited_by ${where} ORDER BY ec.created_at DESC LIMIT 100`,
       params,
     );
     res.json({ contracts });
@@ -992,6 +1093,123 @@ app.get("/api/v1/contracts", requireAuth, async (req, res, next) => {
     next(e);
   }
 });
+app.put(
+  "/api/v1/staff/contracts/:id",
+  requireAuth,
+  allow("administrator", "agency_staff"),
+  async (req, res, next) => {
+    try {
+      const id = z.coerce.number().int().positive().parse(req.params.id);
+      const value = z
+        .object({
+          roleTitle: z.string().min(2).max(180),
+          startDate: z.string().date(),
+          endDate: z.string().date().nullable().optional(),
+        })
+        .parse(req.body);
+      const [result] = await db().execute(
+        "UPDATE employment_contracts SET role_title=?,start_date=?,end_date=?,last_edited_by=? WHERE id=? AND status IN ('draft','sent') AND employer_signed_at IS NULL AND candidate_signed_at IS NULL",
+        [
+          value.roleTitle,
+          value.startDate,
+          value.endDate || null,
+          req.user.id,
+          id,
+        ],
+      );
+      if (!result.affectedRows)
+        return res.status(400).json({
+          message:
+            "Signed contracts cannot be edited. Create an amendment instead.",
+        });
+      await db().execute(
+        "INSERT INTO staff_activity(staff_user_id,action_code,entity_type,entity_id) VALUES(?,'contract.edited','employment_contract',?)",
+        [req.user.id, String(id)],
+      );
+      res.json({ message: "Contract updated and editor recorded." });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+app.post(
+  "/api/v1/staff/contracts/:id/replacement",
+  requireAuth,
+  allow("administrator", "agency_staff"),
+  async (req, res, next) => {
+    const connection = await db().getConnection();
+    try {
+      const id = z.coerce.number().int().positive().parse(req.params.id);
+      const value = z
+        .object({
+          replacementCandidateUserId: z.coerce.number().int().positive(),
+          reason: z.string().min(10).max(1000),
+        })
+        .parse(req.body);
+      await connection.beginTransaction();
+      const [[contract]] = await connection.execute(
+        "SELECT * FROM employment_contracts WHERE id=? FOR UPDATE",
+        [id],
+      );
+      if (!contract) {
+        await connection.rollback();
+        return res.status(404).json({ message: "Contract not found." });
+      }
+      const [[candidate]] = await connection.execute(
+        "SELECT id FROM users WHERE id=? AND role='candidate' AND status='active'",
+        [value.replacementCandidateUserId],
+      );
+      if (!candidate) {
+        await connection.rollback();
+        return res.status(400).json({ message: "Choose an active candidate." });
+      }
+      await connection.execute(
+        "INSERT INTO contract_amendments(contract_id,previous_candidate_user_id,replacement_candidate_user_id,reason,terms_snapshot,created_by) VALUES(?,?,?,?,?,?)",
+        [
+          id,
+          contract.candidate_user_id,
+          candidate.id,
+          value.reason,
+          contract.terms_snapshot,
+          req.user.id,
+        ],
+      );
+      if (contract.placement_id)
+        await connection.execute(
+          "UPDATE placements SET status='terminated',end_date=CURDATE() WHERE id=?",
+          [contract.placement_id],
+        );
+      const [placement] = await connection.execute(
+        "INSERT INTO placements(employer_user_id,candidate_user_id,role_title,status,start_date,end_date) VALUES(?,?,?,'probation',CURDATE(),?)",
+        [
+          contract.employer_user_id,
+          candidate.id,
+          contract.role_title,
+          contract.end_date,
+        ],
+      );
+      const amendment = `<h2>Replacement amendment</h2><p>The previous placement has ended. Candidate #${candidate.id} is proposed as the replacement for the same role. Reason recorded by the agency: ${sanitizeHtml(value.reason, { allowedTags: [], allowedAttributes: {} })}</p>`;
+      await connection.execute(
+        "UPDATE employment_contracts SET candidate_user_id=?,placement_id=?,terms_snapshot=CONCAT(terms_snapshot,?),status='sent',employer_signed_name=NULL,employer_signed_at=NULL,candidate_signed_name=NULL,candidate_signed_at=NULL,last_edited_by=? WHERE id=?",
+        [candidate.id, placement.insertId, amendment, req.user.id, id],
+      );
+      await connection.execute(
+        "INSERT INTO staff_activity(staff_user_id,action_code,entity_type,entity_id,context) VALUES(?,'contract.replacement','employment_contract',?,JSON_OBJECT('previous_candidate_id',?,'replacement_candidate_id',?))",
+        [req.user.id, String(id), contract.candidate_user_id, candidate.id],
+      );
+      await connection.commit();
+      res.json({
+        message:
+          "Replacement amendment recorded. Both parties must review and sign the updated contract.",
+      });
+    } catch (error) {
+      await connection.rollback();
+      next(error);
+    } finally {
+      connection.release();
+    }
+  },
+);
 app.get("/api/v1/contracts/:id", requireAuth, async (req, res, next) => {
   try {
     const id = z.coerce.number().int().positive().parse(req.params.id);
@@ -1001,7 +1219,15 @@ app.get("/api/v1/contracts/:id", requireAuth, async (req, res, next) => {
     );
     if (!rows[0])
       return res.status(404).json({ message: "Contract not found." });
-    res.json({ contract: rows[0] });
+    const [amendments] = await db().execute(
+      "SELECT ca.id,ca.reason,ca.created_at,previous.email previous_candidate_email,replacement.email replacement_candidate_email,staff.email created_by_email FROM contract_amendments ca LEFT JOIN users previous ON previous.id=ca.previous_candidate_user_id LEFT JOIN users replacement ON replacement.id=ca.replacement_candidate_user_id JOIN users staff ON staff.id=ca.created_by WHERE ca.contract_id=? ORDER BY ca.created_at",
+      [id],
+    );
+    res.json({
+      contract: rows[0],
+      amendments,
+      canSign: ["employer", "candidate"].includes(req.user.role),
+    });
   } catch (e) {
     next(e);
   }
@@ -1146,7 +1372,7 @@ app.post(
               .string()
               .email()
               .transform((x) => x.toLowerCase()),
-            temporaryPassword: z.string().min(10).max(128),
+            temporaryPassword: strongPassword,
           })
           .parse(req.body),
         hash = await argon2.hash(v.temporaryPassword, {
@@ -1276,6 +1502,42 @@ app.put(
     }
   },
 );
+app.put(
+  "/api/v1/admin/fee-bands",
+  requireAuth,
+  allow("administrator"),
+  async (req, res, next) => {
+    try {
+      const value = z
+        .object({
+          payerRole: z.enum(["employer", "candidate"]),
+          feeName: z.string().min(3).max(120),
+          salaryMin: z.coerce.number().min(0),
+          salaryMax: z.coerce.number().min(0),
+          feeAmount: z.coerce.number().min(0),
+        })
+        .refine((item) => item.salaryMax >= item.salaryMin, {
+          message: "Maximum salary must be equal to or above minimum salary.",
+          path: ["salaryMax"],
+        })
+        .parse(req.body);
+      await db().execute(
+        "INSERT INTO fee_bands(payer_role,fee_name,salary_min,salary_max,fee_amount,updated_by) VALUES(?,?,?,?,?,?) ON DUPLICATE KEY UPDATE fee_name=VALUES(fee_name),fee_amount=VALUES(fee_amount),is_active=TRUE,updated_by=VALUES(updated_by)",
+        [
+          value.payerRole,
+          value.feeName,
+          value.salaryMin,
+          value.salaryMax,
+          value.feeAmount,
+          req.user.id,
+        ],
+      );
+      res.json({ message: "Salary-based agency charge saved." });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 app.get(
   "/api/v1/staff/finance",
   requireAuth,
@@ -1283,7 +1545,7 @@ app.get(
   async (_req, res, next) => {
     try {
       const [transactions] = await db().query(
-        "SELECT ft.id,ft.reference_code,ft.purpose,ft.amount,ft.currency,ft.method_code,ft.status,ft.external_reference,ft.paid_at,ft.created_at,u.email,u.role,r.receipt_number FROM financial_transactions ft JOIN users u ON u.id=ft.payer_user_id LEFT JOIN receipts r ON r.transaction_id=ft.id ORDER BY ft.created_at DESC LIMIT 100",
+        "SELECT ft.id,ft.reference_code,ft.purpose,ft.amount,ft.currency,ft.method_code,ft.detected_method,ft.status,ft.external_reference,ft.paid_at,ft.created_at,u.email,u.role,r.receipt_number FROM financial_transactions ft JOIN users u ON u.id=ft.payer_user_id LEFT JOIN receipts r ON r.transaction_id=ft.id ORDER BY ft.created_at DESC LIMIT 100",
       );
       const [prices] = await db().query(
         "SELECT id,service_code,service_name,amount,currency FROM service_prices WHERE is_active=TRUE ORDER BY service_name",
@@ -1291,7 +1553,16 @@ app.get(
       const [methods] = await db().query(
         "SELECT method_code,display_name FROM payment_methods WHERE is_active=TRUE ORDER BY display_name",
       );
-      res.json({ transactions, prices, methods });
+      const [payers] = await db().query(
+        "SELECT u.id,u.email,u.role,COALESCE(cp.full_name,ep.full_name,u.email) full_name FROM users u LEFT JOIN candidate_profiles cp ON cp.user_id=u.id LEFT JOIN employer_profiles ep ON ep.user_id=u.id WHERE u.role IN ('candidate','employer') AND u.status='active' ORDER BY full_name",
+      );
+      const [contracts] = await db().query(
+        "SELECT ec.id,ec.contract_number,ec.employer_user_id,ec.candidate_user_id,ec.role_title,ec.salary_amount,ec.agency_fee_amount,ec.candidate_fee_amount,ue.email employer_email,uc.email candidate_email FROM employment_contracts ec JOIN users ue ON ue.id=ec.employer_user_id JOIN users uc ON uc.id=ec.candidate_user_id WHERE ec.status<>'cancelled' ORDER BY ec.created_at DESC LIMIT 100",
+      );
+      const [feeBands] = await db().query(
+        "SELECT payer_role,fee_name,salary_min,salary_max,fee_amount FROM fee_bands WHERE is_active=TRUE ORDER BY payer_role,salary_min",
+      );
+      res.json({ transactions, prices, methods, payers, contracts, feeBands });
     } catch (e) {
       next(e);
     }
@@ -1307,6 +1578,7 @@ app.post(
         .object({
           payerEmail: z.string().email(),
           servicePriceId: z.coerce.number().int().positive().optional(),
+          contractId: z.coerce.number().int().positive().optional(),
           purpose: z.string().min(3).max(180),
           amount: z.coerce.number().positive().max(10000000),
           currency: z.enum(["KES", "USD"]).default("KES"),
@@ -1320,10 +1592,14 @@ app.post(
       );
       if (!payer)
         return res.status(404).json({ message: "Payer account not found." });
-      if (v.methodCode) {
+      const detectedMethod =
+        !v.methodCode && /^[A-Z0-9]{10}$/i.test(v.externalReference || "")
+          ? "mpesa"
+          : v.methodCode || null;
+      if (detectedMethod) {
         const [[method]] = await db().execute(
           "SELECT method_code FROM payment_methods WHERE method_code=? AND is_active=TRUE",
-          [v.methodCode],
+          [detectedMethod],
         );
         if (!method)
           return res
@@ -1331,19 +1607,25 @@ app.post(
             .json({ message: "That payment method is not active." });
       }
       const reference = `DM-${new Date().getUTCFullYear()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
-      await db().execute(
-        "INSERT INTO financial_transactions(payer_user_id,service_price_id,reference_code,purpose,amount,currency,method_code,external_reference,recorded_by) VALUES(?,?,?,?,?,?,?,?,?)",
+      const [createdPayment] = await db().execute(
+        "INSERT INTO financial_transactions(payer_user_id,service_price_id,contract_id,reference_code,purpose,amount,currency,method_code,detected_method,external_reference,recorded_by) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
         [
           payer.id,
           v.servicePriceId || null,
+          v.contractId || null,
           reference,
           v.purpose,
           v.amount,
           v.currency,
-          v.methodCode || null,
+          detectedMethod,
+          detectedMethod,
           v.externalReference || null,
           req.user.id,
         ],
+      );
+      await db().execute(
+        "INSERT INTO staff_activity(staff_user_id,action_code,entity_type,entity_id,context) VALUES(?,'payment.created','financial_transaction',?,JSON_OBJECT('reference',?,'payer_id',?))",
+        [req.user.id, String(createdPayment.insertId), reference, payer.id],
       );
       res.status(201).json({ message: "Payment record created.", reference });
     } catch (e) {
@@ -1373,14 +1655,18 @@ app.put(
       }
       const receiptNumber = `DMR-${new Date().getUTCFullYear()}-${String(id).padStart(6, "0")}`;
       await connection.execute(
-        "UPDATE financial_transactions SET status='paid',external_reference=?,paid_at=UTC_TIMESTAMP() WHERE id=?",
-        [v.externalReference, id],
+        "UPDATE financial_transactions SET status='paid',external_reference=?,detected_method=COALESCE(detected_method,IF(? REGEXP '^[A-Za-z0-9]{10}$','mpesa',method_code)),paid_at=UTC_TIMESTAMP() WHERE id=?",
+        [v.externalReference, v.externalReference, id],
       );
       await connection.execute(
         "INSERT INTO receipts(transaction_id,receipt_number,issued_by) VALUES(?,?,?) ON DUPLICATE KEY UPDATE issued_by=VALUES(issued_by)",
         [id, receiptNumber, req.user.id],
       );
       await connection.commit();
+      await db().execute(
+        "INSERT INTO staff_activity(staff_user_id,action_code,entity_type,entity_id,context) VALUES(?,'payment.verified','financial_transaction',?,JSON_OBJECT('receipt',?))",
+        [req.user.id, String(id), receiptNumber],
+      );
       res.json({
         message: "Payment verified and receipt issued.",
         receiptNumber,
@@ -1461,7 +1747,7 @@ app.post("/api/v1/auth/reset-password", authLimiter, async (req, res, next) => {
     const v = z
       .object({
         token: z.string().length(64),
-        password: z.string().min(10).max(128),
+        password: strongPassword,
       })
       .parse(req.body);
     const hash = crypto.createHash("sha256").update(v.token).digest("hex");
@@ -2276,6 +2562,129 @@ app.put(
       });
     } catch (e) {
       next(e);
+    }
+  },
+);
+app.get("/api/v1/knowledge", requireAuth, async (req, res, next) => {
+  try {
+    const audience =
+      req.user.role === "candidate"
+        ? "candidate"
+        : req.user.role === "employer"
+          ? "employer"
+          : "staff";
+    const [items] = await db().execute(
+      "SELECT ki.id,ki.slug,ki.audience,ki.category,ki.title,ki.summary,ki.content,ki.version,ki.requires_acknowledgement,ki.updated_at,ka.acknowledged_version,ka.acknowledged_at FROM knowledge_items ki LEFT JOIN knowledge_acknowledgements ka ON ka.knowledge_item_id=ki.id AND ka.user_id=? WHERE ki.is_published=TRUE AND (ki.audience='all' OR ki.audience=? OR ?='staff') ORDER BY ki.category,ki.title",
+      [req.user.id, audience, audience],
+    );
+    res.json({ items });
+  } catch (error) {
+    next(error);
+  }
+});
+app.post(
+  "/api/v1/knowledge/:id/acknowledge",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const id = z.coerce.number().int().positive().parse(req.params.id);
+      const [[item]] = await db().execute(
+        "SELECT id,version FROM knowledge_items WHERE id=? AND is_published=TRUE",
+        [id],
+      );
+      if (!item)
+        return res.status(404).json({ message: "Guidance not found." });
+      const ipHash = crypto
+        .createHash("sha256")
+        .update(req.ip || "")
+        .digest("hex");
+      await db().execute(
+        "INSERT INTO knowledge_acknowledgements(knowledge_item_id,user_id,acknowledged_version,ip_address) VALUES(?,?,?,?) ON DUPLICATE KEY UPDATE acknowledged_version=VALUES(acknowledged_version),acknowledged_at=UTC_TIMESTAMP(),ip_address=VALUES(ip_address)",
+        [id, req.user.id, item.version, ipHash],
+      );
+      res.json({ message: "Your acknowledgement has been recorded." });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+app.put(
+  "/api/v1/staff/knowledge/:id",
+  requireAuth,
+  allow("administrator", "agency_staff"),
+  async (req, res, next) => {
+    try {
+      const id = z.coerce.number().int().positive().parse(req.params.id);
+      const value = z
+        .object({
+          title: z.string().min(5).max(180),
+          summary: z.string().min(15).max(320),
+          content: z.string().min(100).max(100000),
+          requiresAcknowledgement: z.boolean().default(true),
+        })
+        .parse(req.body);
+      await db().execute(
+        "UPDATE knowledge_items SET title=?,summary=?,content=?,requires_acknowledgement=?,version=version+1,updated_by=? WHERE id=?",
+        [
+          value.title,
+          value.summary,
+          cleanArticleHtml(value.content),
+          value.requiresAcknowledgement,
+          req.user.id,
+          id,
+        ],
+      );
+      await db().execute(
+        "INSERT INTO staff_activity(staff_user_id,action_code,entity_type,entity_id,context) VALUES(?,'knowledge.updated','knowledge_item',?,JSON_OBJECT('title',?))",
+        [req.user.id, String(id), value.title],
+      );
+      res.json({
+        message: "Guidance updated. Users must accept the new version.",
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+app.get(
+  "/api/v1/candidate/applications",
+  requireAuth,
+  allow("candidate"),
+  async (req, res, next) => {
+    try {
+      const [applications] = await db().execute(
+        "SELECT a.id,a.status,a.created_at,a.updated_at,j.title,j.reference_code,j.location,j.employment_type FROM applications a LEFT JOIN jobs j ON j.id=a.job_id WHERE a.candidate_user_id=? ORDER BY a.updated_at DESC",
+        [req.user.id],
+      );
+      res.json({ applications });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+app.get(
+  "/api/v1/staff/activity",
+  requireAuth,
+  allow("administrator", "agency_staff"),
+  async (req, res, next) => {
+    try {
+      const [[recorded], [audited]] = await Promise.all([
+        db().execute(
+          "SELECT CONCAT('S',sa.id) id,sa.action_code,sa.entity_type,sa.entity_id,sa.context,sa.created_at,u.email staff_email FROM staff_activity sa JOIN users u ON u.id=sa.staff_user_id ORDER BY sa.created_at DESC LIMIT 200",
+        ),
+        db().execute(
+          "SELECT CONCAT('A',al.id) id,al.action action_code,al.entity_type,COALESCE(al.entity_id,'') entity_id,al.metadata context,al.created_at,u.email staff_email FROM audit_logs al JOIN users u ON u.id=al.actor_user_id WHERE u.role IN ('administrator','agency_staff') ORDER BY al.created_at DESC LIMIT 200",
+        ),
+      ]);
+      const activity = [...recorded, ...audited]
+        .sort(
+          (left, right) =>
+            new Date(right.created_at) - new Date(left.created_at),
+        )
+        .slice(0, 200);
+      res.json({ activity });
+    } catch (error) {
+      next(error);
     }
   },
 );

@@ -5,9 +5,11 @@ export function PublicForm({ kind }: { kind: "candidate" | "employer" }) {
   const [state, setState] = useState<"idle" | "sending" | "done" | "error">(
     "idle",
   );
+  const [error, setError] = useState("");
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setState("sending");
+    setError("");
     const form = new FormData(e.currentTarget);
     const data = Object.fromEntries(form.entries());
     try {
@@ -19,9 +21,20 @@ export function PublicForm({ kind }: { kind: "candidate" | "employer" }) {
           body: JSON.stringify(data),
         },
       );
-      if (!response.ok) throw new Error();
+      const body = await response.json();
+      if (!response.ok)
+        throw new Error(
+          body.issues?.[0]?.message ||
+            body.message ||
+            "Registration could not be completed.",
+        );
       setState("done");
-    } catch {
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Registration could not be completed.",
+      );
       setState("error");
     }
   }
@@ -60,10 +73,15 @@ export function PublicForm({ kind }: { kind: "candidate" | "employer" }) {
               name="password"
               type="password"
               autoComplete="new-password"
-              minLength={10}
+              minLength={8}
+              pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{8,}"
+              title="Use at least 8 characters with a capital letter, lowercase letter and number."
               required
             />
-            <small>At least 10 characters.</small>
+            <small>
+              8+ characters, including a capital letter, lowercase letter and
+              number.
+            </small>
           </label>
           <div className="field-grid">
             <label>
@@ -130,9 +148,8 @@ export function PublicForm({ kind }: { kind: "candidate" | "employer" }) {
             : "Submit staffing request"}
       </button>
       {state === "error" && (
-        <p className="form-error">
-          We couldn’t send this yet. Please check that the secure API is
-          running, then try again.
+        <p className="form-error" role="alert">
+          {error}
         </p>
       )}
     </form>

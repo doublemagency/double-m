@@ -8,11 +8,11 @@ export default function Testimonials() {
       intro="Only approved, permission-based reviews from employers and placed candidates are published here."
     >
       <section className="honest-empty shell">
-        <h2>Verified experiences will appear here.</h2>
+        <h2>Feedback is verified before publication.</h2>
         <p>
-          We have intentionally left this page free of fabricated reviews.
-          Returning clients and candidates can submit feedback from their
-          private workspace; the agency reviews consent before publication.
+          We do not invent endorsements. Returning clients and placed candidates
+          submit feedback from their secure workspace, and the agency confirms
+          consent and the related placement before publishing any review.
         </p>
       </section>
     </PublicPage>

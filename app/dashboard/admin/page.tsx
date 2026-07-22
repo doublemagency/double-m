@@ -68,7 +68,8 @@ export default function AdminControls() {
             <input
               name="temporaryPassword"
               type="password"
-              minLength={10}
+              minLength={8}
+              pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{8,}"
               required
             />
           </label>
@@ -135,6 +136,38 @@ export default function AdminControls() {
             </select>
           </label>
           <button>Update method</button>
+        </form>
+        <form onSubmit={(e) => submit(e, "/admin/fee-bands")}>
+          <h2>Salary-based agency charges</h2>
+          <p>
+            Maintain the master fee schedule used to calculate new contracts.
+          </p>
+          <label>
+            Payer
+            <select name="payerRole">
+              <option value="employer">Employer office charge</option>
+              <option value="candidate">Candidate contribution</option>
+            </select>
+          </label>
+          <label>
+            Charge name
+            <input name="feeName" defaultValue="Office charge" required />
+          </label>
+          <div className="field-grid">
+            <label>
+              Salary from
+              <input name="salaryMin" type="number" min="0" required />
+            </label>
+            <label>
+              Salary to
+              <input name="salaryMax" type="number" min="0" required />
+            </label>
+          </div>
+          <label>
+            Agency charge (KES)
+            <input name="feeAmount" type="number" min="0" required />
+          </label>
+          <button>Save fee band</button>
         </form>
       </div>
       {message && (

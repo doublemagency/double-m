@@ -22,7 +22,10 @@ export default function Login() {
         body: JSON.stringify(data),
       });
       const body = await r.json();
-      if (!r.ok) throw new Error(body.message);
+      if (!r.ok)
+        throw new Error(
+          body.issues?.[0]?.message || body.message || "Sign in failed.",
+        );
       router.push("/dashboard");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sign in failed.");

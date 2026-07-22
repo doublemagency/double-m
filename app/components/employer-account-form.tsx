@@ -6,21 +6,28 @@ export function EmployerAccountForm() {
     e.preventDefault();
     setStatus("Sending…");
     const data = Object.fromEntries(new FormData(e.currentTarget));
-    const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...data,
-        accountType: "employer",
-        privacyConsent: "true",
-      }),
-    });
-    const b = await r.json();
-    setStatus(
-      r.ok
-        ? "Your account is ready. Check your email for a welcome message."
-        : b.message,
-    );
+    try {
+      const r = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/auth/register`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...data,
+            accountType: "employer",
+            privacyConsent: "true",
+          }),
+        },
+      );
+      const b = await r.json();
+      setStatus(
+        r.ok
+          ? "Your account is ready. Check your email for a welcome message."
+          : b.issues?.[0]?.message || b.message || "Registration failed.",
+      );
+    } catch {
+      setStatus("We could not connect securely. Please try again.");
+    }
   }
   return (
     <form className="public-form" onSubmit={submit}>
@@ -44,7 +51,17 @@ export function EmployerAccountForm() {
       </label>
       <label>
         Create password
-        <input name="password" type="password" minLength={10} required />
+        <input
+          name="password"
+          type="password"
+          minLength={8}
+          pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9]).{8,}"
+          title="Use at least 8 characters with a capital letter, lowercase letter and number."
+          required
+        />
+        <small>
+          8+ characters with a capital letter, lowercase letter and number.
+        </small>
       </label>
       <label className="consent">
         <input type="checkbox" required /> I accept the privacy notice and

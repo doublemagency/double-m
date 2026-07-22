@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Bell,
+  BookOpen,
   BriefcaseBusiness,
   CalendarClock,
   ChevronRight,
@@ -81,7 +82,7 @@ export default function Dashboard() {
   return (
     <main className="dashboard">
       <aside className="dash-sidebar">
-        <Link href="/" className="dash-brand">
+        <Link href="/dashboard" className="dash-brand">
           DOUBLE M <small>AGENCY</small>
         </Link>
         <nav>
@@ -103,6 +104,10 @@ export default function Dashboard() {
                 <CreditCard />
                 Payments
               </Link>
+              <Link href="/dashboard/my-contracts">
+                <FileCheck2 />
+                My contracts
+              </Link>
               <Link href="/dashboard/client">
                 <RefreshCcw />
                 Replacements
@@ -110,6 +115,14 @@ export default function Dashboard() {
               <Link href="/dashboard/client">
                 <Star />
                 Reviews
+              </Link>
+              <Link href="/dashboard/knowledge">
+                <BookOpen />
+                Knowledge base
+              </Link>
+              <Link href="/dashboard/activity">
+                <ClipboardList />
+                Staff activity
               </Link>
             </>
           )}
@@ -123,13 +136,21 @@ export default function Dashboard() {
                 <Search />
                 Recommended jobs
               </Link>
-              <Link href="/dashboard">
+              <Link href="/dashboard/applications">
                 <BriefcaseBusiness />
-                Applications
+                My applications
+              </Link>
+              <Link href="/dashboard/knowledge">
+                <BookOpen />
+                Knowledge base
               </Link>
               <Link href="/dashboard">
                 <FileCheck2 />
                 Documents
+              </Link>
+              <Link href="/dashboard/my-contracts">
+                <ClipboardList />
+                My contracts
               </Link>
             </>
           )}
@@ -143,6 +164,10 @@ export default function Dashboard() {
                 <BriefcaseBusiness />
                 Employer requests
               </Link>
+              <Link href="/dashboard/jobs">
+                <BriefcaseBusiness />
+                Jobs
+              </Link>
               <Link href="/dashboard/matching">
                 <Sparkles />
                 Matching
@@ -150,6 +175,26 @@ export default function Dashboard() {
               <Link href="/dashboard/contracts">
                 <CalendarClock />
                 Interviews
+              </Link>
+              <Link href="/dashboard/assisted-registration">
+                <CircleUserRound />
+                Register client
+              </Link>
+              <Link href="/dashboard/articles">
+                <FileCheck2 />
+                Articles
+              </Link>
+              <Link href="/dashboard/contracts">
+                <ClipboardList />
+                Contracts
+              </Link>
+              <Link href="/dashboard/finance">
+                <CreditCard />
+                Payments
+              </Link>
+              <Link href="/dashboard/knowledge">
+                <BookOpen />
+                Knowledge base
               </Link>
             </>
           )}
@@ -160,6 +205,40 @@ export default function Dashboard() {
             </Link>
           )}
         </nav>
+        <details className="dash-quicklinks">
+          <summary>Quick links</summary>
+          <div>
+            <Link href="/dashboard">Overview</Link>
+            {user.role === "candidate" && (
+              <Link href="/dashboard/applications">My applications</Link>
+            )}
+            {user.role === "employer" && (
+              <Link href="/dashboard/client">Requests and placements</Link>
+            )}
+            {(["candidate", "employer"] as string[]).includes(user.role) && (
+              <Link href="/dashboard/my-contracts">My contracts</Link>
+            )}
+            {(["administrator", "agency_staff"] as string[]).includes(
+              user.role,
+            ) && (
+              <>
+                <Link href="/dashboard/assisted-registration">
+                  Register client
+                </Link>
+                <Link href="/dashboard/matching">Matching</Link>
+                <Link href="/dashboard/jobs">Jobs</Link>
+                <Link href="/dashboard/articles">Articles</Link>
+                <Link href="/dashboard/contracts">Contracts</Link>
+                <Link href="/dashboard/finance">Payments</Link>
+                <Link href="/dashboard/activity">Staff activity</Link>
+                {user.role === "administrator" && (
+                  <Link href="/dashboard/admin">Administration</Link>
+                )}
+              </>
+            )}
+            <Link href="/dashboard/knowledge">Knowledge base</Link>
+          </div>
+        </details>
         <button onClick={logout}>
           <LogOut />
           Sign out
@@ -197,7 +276,7 @@ export default function Dashboard() {
         ) : user.role === "candidate" ? (
           <CandidateView data={data} />
         ) : (
-          <StaffView data={data} admin={user.role === "administrator"} />
+          <StaffView data={data} />
         )}
       </section>
     </main>
@@ -250,7 +329,7 @@ function EmployerView({ data }: { data: any }) {
       )}
       <Panel
         title="Recruitment requests"
-        empty="Your submitted staffing requests and their progress will appear here."
+        empty="No staffing requests yet. Use Request staff to start a tracked request."
         rows={data.requests}
       />
       <PaymentTable rows={data.payments} />
@@ -475,22 +554,10 @@ function CandidateView({ data }: { data: any }) {
     </>
   );
 }
-function StaffView({ data, admin }: { data: any; admin: boolean }) {
+function StaffView({ data }: { data: any }) {
   const m = data.metrics || {};
   return (
     <>
-      <div className="dash-actions">
-        <Link className="button dark" href="/dashboard">
-          Recruitment overview
-        </Link>
-        <Link href="/dashboard/assisted-registration">
-          Register a candidate or employer
-        </Link>
-        <Link href="/dashboard/articles">Write an article</Link>
-        <Link href="/dashboard/contracts">Contracts</Link>
-        <Link href="/dashboard/finance">Payments</Link>
-        {admin && <Link href="/dashboard/admin">Administration controls</Link>}
-      </div>
       <div className="metric-grid">
         <Metric title="Candidates" value={m.candidates || 0} />
         <Metric title="Open requests" value={m.openRequests || 0} />
@@ -500,7 +567,7 @@ function StaffView({ data, admin }: { data: any; admin: boolean }) {
       <div className="workspace-grid">
         <Panel
           title="Recruitment attention"
-          empty="New applications, verification tasks and interviews will appear here."
+          empty="No open workflow items. Create a job, register a client or open matching."
         />
         <div className="ai-assistant">
           <Sparkles />
@@ -625,8 +692,8 @@ function PaymentTable({ rows = [] }: { rows?: any[] }) {
         <div className="panel-empty">
           <CreditCard />
           <p>
-            No payment records yet. Verified payments and receipts will appear
-            here.
+            No payment records yet. Use a contract or service reference when
+            making the first payment.
           </p>
         </div>
       )}

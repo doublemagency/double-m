@@ -35,20 +35,16 @@ export function ContactDetails() {
       </article>
       <article>
         <span>Phone & WhatsApp</span>
-        <h2>
-          {phone ? (
-            <a href={`tel:${phone}`}>{phone}</a>
-          ) : (
-            "Awaiting agency confirmation"
-          )}
-        </h2>
+        <h2>{phone ? <a href={`tel:${phone}`}>{phone}</a> : "0792613346"}</h2>
         <p>
           {phone ? (
             <a href={`https://wa.me/${phone.replace(/\D/g, "")}`}>
               Start a WhatsApp conversation
             </a>
           ) : (
-            "The verified number will appear once saved by the administrator."
+            <a href="https://wa.me/254792613346">
+              Start a WhatsApp conversation
+            </a>
           )}
         </p>
       </article>
