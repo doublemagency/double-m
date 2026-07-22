@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/server.js",
-    "start": "node src/server.js",
+    "start": "node app.js",
     "worker": "node src/email-worker.js",
     "db:migrate": "node src/migrate.js",
     "db:seed": "node src/seed.js"
