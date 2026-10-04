@@ -74,8 +74,12 @@ export function JobBrowser() {
       {shown.length ? (
         <section className="job-grid">
           {shown.map((j) => (
-            <article key={j.id}>
-              <h2>{j.title}</h2>
+            <article key={j.id} className="job-card">
+              <h2>
+                <Link className="card-link" href={`/jobs/${j.id}`}>
+                  {j.title}
+                </Link>
+              </h2>
               <div>
                 <small>
                   <MapPin /> {j.location}
@@ -94,7 +98,7 @@ export function JobBrowser() {
               <p>{j.description}</p>
               <div>
                 <Link className="table-action" href={`/jobs/${j.id}`}>
-                  View details
+                  View details →
                 </Link>
                 <ShareButton
                   title={j.title}

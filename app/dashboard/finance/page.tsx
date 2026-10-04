@@ -12,7 +12,8 @@ export default function Finance() {
       feeBands: [],
     }),
     [message, setMessage] = useState(""),
-    [dialog, setDialog] = useState(false);
+    [dialog, setDialog] = useState(false),
+    [prefillId, setPrefillId] = useState("");
   async function load() {
     const r = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/staff/finance`, {
       credentials: "include",
@@ -22,7 +23,15 @@ export default function Finance() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
+    const contract = new URLSearchParams(window.location.search).get("contract");
+    if (contract) {
+      setPrefillId(contract);
+      setDialog(true);
+    }
   }, []);
+  const prefill = data.contracts.find(
+    (item: any) => String(item.id) === prefillId,
+  );
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formElement = e.currentTarget,
@@ -110,11 +119,15 @@ export default function Finance() {
             <button className="modal-close" onClick={() => setDialog(false)}>
               Close
             </button>
-            <form onSubmit={create}>
+            <form onSubmit={create} key={prefill?.id || "blank"}>
               <h2>New payment record</h2>
               <label>
                 Payer account
-                <select name="payerEmail" required>
+                <select
+                  name="payerEmail"
+                  required
+                  defaultValue={prefill?.employer_email || ""}
+                >
                   <option value="">Choose a registered payer</option>
                   {data.payers.map((payer: any) => (
                     <option key={payer.id} value={payer.email}>
@@ -127,6 +140,7 @@ export default function Finance() {
                 Related contract
                 <select
                   name="contractId"
+                  defaultValue={prefill?.id ? String(prefill.id) : ""}
                   onChange={(event) => {
                     const contract = data.contracts.find(
                         (item: any) => String(item.id) === event.target.value,
@@ -191,7 +205,13 @@ export default function Finance() {
               </label>
               <label>
                 Purpose
-                <input name="purpose" required />
+                <input
+                  name="purpose"
+                  required
+                  defaultValue={
+                    prefill ? `Agency fee · ${prefill.contract_number}` : ""
+                  }
+                />
               </label>
               <label>
                 Amount (KES)
@@ -201,6 +221,7 @@ export default function Finance() {
                   min="1"
                   step="0.01"
                   required
+                  defaultValue={prefill?.agency_fee_amount || ""}
                 />
               </label>
               <label>

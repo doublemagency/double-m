@@ -1,7 +1,9 @@
 "use client";
+import Link from "next/link";
+import { ArrowRight, MessageCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 
-const roles = ["caregivers", "shamba boys", "shop attendants"];
+const roles = ["nanny", "househelp", "caregiver", "house manager"];
 
 export function HeroMessage() {
   const [roleIndex, setRoleIndex] = useState(0);
@@ -22,27 +24,34 @@ export function HeroMessage() {
   return (
     <>
       <h1>
-        Trusted, vetted househelps, nannies and
+        Hire a vetted
         <br />
         <em className="rotating-role" key={roles[roleIndex]}>
-          {roles[roleIndex]} in Kenya.
+          {roles[roleIndex]} in Nairobi.
         </em>
       </h1>
       <p>
-        Double M places qualified, reliable and vetted staff that suits your
-        family, business and childcare needs.{" "}
-        {whatsapp ? (
+        Tell us who you need. We verify every candidate, send you a shortlist
+        and handle the contract. Replacement support included.
+      </p>
+      <div className="hero-actions">
+        <Link className="button" href="/hire">
+          Request staff <ArrowRight size={18} />
+        </Link>
+        {whatsapp && (
           <a
+            className="button secondary"
             href={`https://wa.me/${whatsapp}`}
             target="_blank"
             rel="noreferrer"
           >
-            Talk to us on WhatsApp.
+            <MessageCircle size={18} /> WhatsApp us
           </a>
-        ) : (
-          <a href="/contact">Talk to our team.</a>
         )}
-      </p>
+      </div>
+      <Link className="hero-seeker-link" href="/jobs">
+        Looking for work? Browse jobs <ArrowRight size={14} />
+      </Link>
     </>
   );
 }

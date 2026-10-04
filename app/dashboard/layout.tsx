@@ -99,12 +99,23 @@ const roleItems: Record<string, NavItem[]> = {
   ],
 };
 
+const roleLabels: Record<string, string> = {
+  administrator: "Administrator",
+  agency_staff: "Agency staff",
+  candidate: "Job seeker",
+  employer: "Employer",
+};
+
+function isActive(pathname: string, href: string) {
+  if (href === "/dashboard") return pathname === href;
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   useEffect(() => {
-    if (pathname === "/dashboard") return;
     const controller = new AbortController();
     fetch(`${process.env.NEXT_PUBLIC_API_URL}/dashboard`, {
       credentials: "include",
@@ -117,8 +128,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [pathname, router]);
-  if (pathname === "/dashboard") return children;
+  }, [router]);
   if (!user)
     return (
       <main className="dashboard-loading">
@@ -144,12 +154,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <Link href="/dashboard" className="dash-brand">
           DOUBLE M <small>AGENCY</small>
         </Link>
+        <p className="dash-role">{roleLabels[user.role] || user.role}</p>
         <nav>
           {items.map(({ href, label, icon: Icon }) => (
             <Link
               href={href}
               key={`${href}-${label}`}
-              className={pathname === href ? "active" : undefined}
+              className={isActive(pathname, href) ? "active" : undefined}
+              aria-current={isActive(pathname, href) ? "page" : undefined}
             >
               <Icon /> {label}
             </Link>
@@ -177,7 +189,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       <section className="dash-main">
         <header className="dash-top workspace-account-bar">
           <Link href="/dashboard" aria-label="Return to dashboard">
-            <ShieldCheck /> Secure workspace
+            <ShieldCheck /> {roleLabels[user.role] || "Secure"} workspace
           </Link>
           <div>
             <Link href="/dashboard/security" className="account-link">

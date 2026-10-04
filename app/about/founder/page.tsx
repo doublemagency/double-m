@@ -4,8 +4,8 @@ export default function Founder() {
   return (
     <PublicPage
       eyebrow="Leadership"
-      title="A people-first standard from the top."
-      intro="Double M Agency was shaped around a simple belief: recruitment should feel responsible, understandable and personal—not transactional."
+      title="Our founder's standard."
+      intro="Recruitment that feels responsible and personal."
     >
       <section className="prose shell">
         <h2>A note from our founder</h2>

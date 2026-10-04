@@ -1,6 +1,14 @@
 "use client";
 
-import { BadgeCheck, ChevronRight, MapPin, UserRound } from "lucide-react";
+import {
+  BadgeCheck,
+  CalendarCheck,
+  ChevronRight,
+  Home,
+  Languages,
+  MapPin,
+  UserRound,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { AutoScrollRail } from "./auto-scroll-rail";
 
@@ -23,8 +31,34 @@ type Candidate = {
   is_verified: number;
 };
 
-export function AvailableCandidateRail() {
+const roleOf = (candidate: Candidate) =>
+  (candidate.best_role || candidate.profession || "").trim();
+
+const arrangementLabel = (value: string) =>
+  value === "either"
+    ? "Live-in or live-out"
+    : value === "live_in"
+      ? "Live-in"
+      : value === "live_out"
+        ? "Live-out"
+        : value.replaceAll("_", " ");
+
+function availabilityLabel(candidate: Candidate) {
+  if (!candidate.available_from) return "Available now";
+  const date = new Date(candidate.available_from);
+  return date.getTime() > Date.now()
+    ? `From ${date.toLocaleDateString("en-KE", { day: "numeric", month: "short" })}`
+    : "Available now";
+}
+
+export function AvailableCandidateRail({
+  layout = "rail",
+}: {
+  layout?: "rail" | "grid";
+}) {
   const [items, setItems] = useState<Candidate[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [filter, setFilter] = useState("All");
   const [selected, setSelected] = useState<Candidate | null>(null);
 
   useEffect(() => {
@@ -34,19 +68,45 @@ export function AvailableCandidateRail() {
     })
       .then((response) => (response.ok ? response.json() : { candidates: [] }))
       .then((body) => setItems(body.candidates || []))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoaded(true));
     return () => controller.abort();
   }, []);
 
+  if (!loaded)
+    return (
+      <div className="candidate-skeletons" aria-hidden="true">
+        {[0, 1, 2].map((n) => (
+          <span key={n} />
+        ))}
+      </div>
+    );
   if (!items.length) return null;
+
+  const roles = [...new Set(items.map(roleOf).filter(Boolean))].slice(0, 6);
+  const visible =
+    filter === "All" ? items : items.filter((item) => roleOf(item) === filter);
 
   return (
     <>
-      <AutoScrollRail
-        className="public-card-rail candidate-public-rail"
-        label="Verified available workers"
-      >
-        {items.map((candidate) => (
+      {roles.length > 1 && (
+        <div className="candidate-filters" role="group" aria-label="Filter by role">
+          {["All", ...roles].map((role) => (
+            <button
+              type="button"
+              key={role}
+              className={filter === role ? "active" : undefined}
+              aria-pressed={filter === role}
+              onClick={() => setFilter(role)}
+            >
+              {role}
+            </button>
+          ))}
+        </div>
+      )}
+      {layout === "grid" ? (
+        <div className="candidate-grid">
+        {visible.map((candidate) => (
           <article className="candidate-public-card" key={candidate.id}>
             <div className="candidate-photo">
               {candidate.profile_image ? (
@@ -64,8 +124,11 @@ export function AvailableCandidateRail() {
                   candidate.is_verified ? "is-verified" : "is-enrolled"
                 }
               >
-                <BadgeCheck /> {candidate.is_verified ? "Verified" : "Enrolled"}
+                <BadgeCheck /> {candidate.is_verified ? "ID verified" : "Enrolled"}
               </span>
+              <em className="availability-chip">
+                <CalendarCheck /> {availabilityLabel(candidate)}
+              </em>
             </div>
             <div className="candidate-card-copy">
               <small>Available through Double M</small>
@@ -75,19 +138,110 @@ export function AvailableCandidateRail() {
                 <MapPin /> {candidate.location}
               </p>
               <div className="candidate-card-facts">
-                {candidate.age && <span>{candidate.age} years</span>}
-                {candidate.languages && <span>{candidate.languages}</span>}
-                {candidate.experience_summary && (
-                  <span>{candidate.experience_summary}</span>
+                {candidate.age && <span>{candidate.age} yrs</span>}
+                {candidate.work_arrangement && (
+                  <span>
+                    <Home />
+                    {arrangementLabel(candidate.work_arrangement)}
+                  </span>
+                )}
+                {candidate.languages && (
+                  <span>
+                    <Languages />
+                    {candidate.languages}
+                  </span>
                 )}
               </div>
-              <button type="button" onClick={() => setSelected(candidate)}>
-                Explore summary <ChevronRight />
-              </button>
+              {candidate.experience_summary && (
+                <p className="candidate-card-experience">
+                  {candidate.experience_summary}
+                </p>
+              )}
+              <div className="candidate-card-actions">
+                <button type="button" onClick={() => setSelected(candidate)}>
+                  View summary <ChevronRight />
+                </button>
+                <a
+                  href={`/hire?role=${encodeURIComponent(roleOf(candidate))}`}
+                >
+                  Request this profile
+                </a>
+              </div>
+            </div>
+          </article>
+        ))}
+        </div>
+      ) : (
+      <AutoScrollRail
+        className="public-card-rail candidate-public-rail"
+        label="Verified available workers"
+      >
+        {visible.map((candidate) => (
+          <article className="candidate-public-card" key={candidate.id}>
+            <div className="candidate-photo">
+              {candidate.profile_image ? (
+                // This image is served only for agency-verified public profiles.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`${process.env.NEXT_PUBLIC_API_URL}${candidate.profile_image}`}
+                  alt={`${candidate.public_name}, verified ${candidate.profession}`}
+                />
+              ) : (
+                <UserRound aria-hidden="true" />
+              )}
+              <span
+                className={
+                  candidate.is_verified ? "is-verified" : "is-enrolled"
+                }
+              >
+                <BadgeCheck /> {candidate.is_verified ? "ID verified" : "Enrolled"}
+              </span>
+              <em className="availability-chip">
+                <CalendarCheck /> {availabilityLabel(candidate)}
+              </em>
+            </div>
+            <div className="candidate-card-copy">
+              <small>Available through Double M</small>
+              <h3>{candidate.public_name}</h3>
+              <b>{candidate.best_role || candidate.profession}</b>
+              <p>
+                <MapPin /> {candidate.location}
+              </p>
+              <div className="candidate-card-facts">
+                {candidate.age && <span>{candidate.age} yrs</span>}
+                {candidate.work_arrangement && (
+                  <span>
+                    <Home />
+                    {arrangementLabel(candidate.work_arrangement)}
+                  </span>
+                )}
+                {candidate.languages && (
+                  <span>
+                    <Languages />
+                    {candidate.languages}
+                  </span>
+                )}
+              </div>
+              {candidate.experience_summary && (
+                <p className="candidate-card-experience">
+                  {candidate.experience_summary}
+                </p>
+              )}
+              <div className="candidate-card-actions">
+                <button type="button" onClick={() => setSelected(candidate)}>
+                  View summary <ChevronRight />
+                </button>
+                <a
+                  href={`/hire?role=${encodeURIComponent(roleOf(candidate))}`}
+                >
+                  Request this profile
+                </a>
+              </div>
             </div>
           </article>
         ))}
       </AutoScrollRail>
+      )}
       {selected && (
         <div
           className="profile-summary-modal"
@@ -177,7 +331,10 @@ export function AvailableCandidateRail() {
                 </dd>
               </div>
             </dl>
-            <a className="button dark" href="/hire">
+            <a
+              className="button dark"
+              href={`/hire?role=${encodeURIComponent(roleOf(selected))}`}
+            >
               Ask Double M about this profile
             </a>
             <small>

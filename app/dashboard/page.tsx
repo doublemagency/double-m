@@ -4,24 +4,14 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Bell,
-  BookOpen,
-  BriefcaseBusiness,
   ChevronRight,
-  CircleUserRound,
   ClipboardList,
   CreditCard,
   FileCheck2,
-  LayoutDashboard,
   LockKeyhole,
-  LogOut,
   MessageCircle,
-  Search,
-  Settings,
   ShieldCheck,
   Sparkles,
-  Star,
-  UsersRound,
 } from "lucide-react";
 type Payload = {
   user: { email: string; role: string; forcePasswordChange: boolean };
@@ -55,13 +45,6 @@ export default function Dashboard() {
       .catch((e) => e.name !== "AbortError" && setError(e.message));
     return () => controller.abort();
   }, [router]);
-  async function logout() {
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/logout`, {
-      method: "POST",
-      credentials: "include",
-    });
-    router.replace("/login");
-  }
   if (error)
     return (
       <main className="dashboard-loading">
@@ -77,199 +60,94 @@ export default function Dashboard() {
       </main>
     );
   const { user, data } = payload;
+  const titles: Record<string, [string, string]> = {
+    administrator: [
+      "Agency control centre",
+      "Everything moving through Double M, from verification to payment.",
+    ],
+    agency_staff: [
+      "Placement workspace",
+      "Verify candidates, match them to requests, then manage contracts and payments.",
+    ],
+    employer: [
+      "Employer workspace",
+      "Request staff, review the agency-approved shortlist and track each placement.",
+    ],
+    candidate: [
+      "Job seeker workspace",
+      "Complete your profile and documents so the agency can approve and match you.",
+    ],
+  };
+  const [title, lead] = titles[user.role] || titles.candidate;
   return (
-    <main className="dashboard">
-      <aside className="dash-sidebar">
-        <Link href="/dashboard" className="dash-brand">
-          DOUBLE M <small>AGENCY</small>
-        </Link>
-        <nav>
-          <Link href="/dashboard" className="active">
-            <LayoutDashboard />
-            Overview
+    <div className="dash-overview">
+      <header className="page-intro">
+        <span>{labels[user.role]}</span>
+        <h1>{title}</h1>
+        <p>{lead}</p>
+      </header>
+      {user.forcePasswordChange && (
+        <div className="security-banner">
+          <ShieldCheck />
+          <div>
+            <b>Secure your account before continuing</b>
+            <p>The temporary password must be replaced on first sign-in.</p>
+          </div>
+          <Link href="/dashboard/security">
+            Change password <ChevronRight />
           </Link>
-          {user.role === "employer" && (
-            <>
-              <Link href="/dashboard/requests">
-                <ClipboardList />
-                Requests
-              </Link>
-              <Link href="/dashboard/client">
-                <UsersRound />
-                Replacement support
-              </Link>
-              <Link href="/dashboard/my-contracts">
-                <FileCheck2 />
-                My contracts
-              </Link>
-              <Link href="/dashboard/knowledge">
-                <BookOpen />
-                Knowledge base
-              </Link>
-              <Link href="/dashboard/reviews">
-                <Star />
-                Leave a review
-              </Link>
-            </>
-          )}
-          {user.role === "candidate" && (
-            <>
-              <Link href="/dashboard/preferences">
-                <CircleUserRound />
-                My profile
-              </Link>
-              <Link href="#recommended-jobs">
-                <Search />
-                Available jobs
-              </Link>
-              <Link href="/dashboard/applications">
-                <BriefcaseBusiness />
-                My applications
-              </Link>
-              <Link href="/dashboard/knowledge">
-                <BookOpen />
-                Knowledge base
-              </Link>
-              <Link href="/dashboard">
-                <FileCheck2 />
-                Documents
-              </Link>
-              <Link href="/dashboard/my-contracts">
-                <ClipboardList />
-                My contracts
-              </Link>
-              <Link href="/dashboard/reviews">
-                <Star />
-                Leave a review
-              </Link>
-            </>
-          )}
-          {["administrator", "agency_staff"].includes(user.role) && (
-            <>
-              <Link href="/dashboard/assisted-registration">
-                <CircleUserRound />
-                Register client
-              </Link>
-              <Link href="/dashboard/matching">
-                <UsersRound />
-                Candidates & matching
-              </Link>
-              <Link href="/dashboard/jobs">
-                <BriefcaseBusiness />
-                Job requests
-              </Link>
-              <Link href="/dashboard/contracts">
-                <ClipboardList />
-                Contracts
-              </Link>
-              <Link href="/dashboard/finance">
-                <CreditCard />
-                Payments
-              </Link>
-              <Link href="/dashboard/articles">
-                <FileCheck2 />
-                Articles
-              </Link>
-              <Link href="/dashboard/knowledge">
-                <BookOpen />
-                Knowledge base
-              </Link>
-            </>
-          )}
-          {user.role === "administrator" && (
-            <Link href="/dashboard/admin">
-              <Settings />
-              System settings
-            </Link>
-          )}
-        </nav>
-        <details className="dash-quicklinks">
-          <summary>Quick links</summary>
+        </div>
+      )}
+      <FlowTracker role={user.role} />
+      {user.role === "employer" ? (
+        <EmployerView data={data} />
+      ) : user.role === "candidate" ? (
+        <CandidateView data={data} />
+      ) : (
+        <StaffView data={data} />
+      )}
+    </div>
+  );
+}
+const flows: Record<string, { title: string; text: string }[]> = {
+  employer: [
+    { title: "Request", text: "Tell us the role, location and start date." },
+    { title: "Shortlist", text: "Review agency-approved candidates." },
+    { title: "Contract", text: "Sign the placement agreement online." },
+    { title: "Payment", text: "Pay the agency fee and get a receipt." },
+    { title: "Placement", text: "Start work with replacement support." },
+  ],
+  candidate: [
+    { title: "Profile", text: "Add your work history and preferences." },
+    { title: "Documents", text: "Upload ID and references for checks." },
+    { title: "Approval", text: "The agency verifies and approves you." },
+    { title: "Matching", text: "You are matched to suitable requests." },
+    { title: "Contract", text: "Sign and start your placement." },
+  ],
+  agency_staff: [
+    { title: "Approve", text: "Review candidate documents." },
+    { title: "Match", text: "Match approved candidates to requests." },
+    { title: "Shortlist", text: "Send a shortlist to the employer." },
+    { title: "Contract", text: "Issue and track signed contracts." },
+    { title: "Payments", text: "Verify payments and issue receipts." },
+  ],
+};
+flows.administrator = flows.agency_staff;
+
+function FlowTracker({ role }: { role: string }) {
+  const steps = flows[role] || flows.candidate;
+  return (
+    <ol className="flow-tracker" aria-label="How your work moves through Double M">
+      {steps.map((step, index) => (
+        <li key={step.title}>
+          <b>{index + 1}</b>
           <div>
-            <Link href="/dashboard">Overview</Link>
-            {user.role === "candidate" && (
-              <Link href="/dashboard/applications">My applications</Link>
-            )}
-            {user.role === "employer" && (
-              <Link href="/dashboard/client">Requests and placements</Link>
-            )}
-            {(["candidate", "employer"] as string[]).includes(user.role) && (
-              <Link href="/dashboard/my-contracts">My contracts</Link>
-            )}
-            {(["administrator", "agency_staff"] as string[]).includes(
-              user.role,
-            ) && (
-              <>
-                <Link href="/dashboard/assisted-registration">
-                  Register client
-                </Link>
-                <Link href="/dashboard/matching">Matching</Link>
-                <Link href="/dashboard/jobs">Jobs</Link>
-                <Link href="/dashboard/articles">Articles</Link>
-                <Link href="/dashboard/contracts">Contracts</Link>
-                <Link href="/dashboard/finance">Payments</Link>
-                <Link href="/dashboard/activity">Staff activity</Link>
-                {user.role === "administrator" && (
-                  <Link href="/dashboard/admin">Administration</Link>
-                )}
-              </>
-            )}
-            <Link href="/dashboard/knowledge">Knowledge base</Link>
+            <strong>{step.title}</strong>
+            <small>{step.text}</small>
           </div>
-        </details>
-        <button onClick={logout}>
-          <LogOut />
-          Sign out
-        </button>
-      </aside>
-      <section className="dash-main">
-        <header className="dash-top">
-          <div>
-            <span>{labels[user.role]}</span>
-            <h1>
-              {user.role === "administrator"
-                ? "Agency control centre"
-                : user.role === "agency_staff"
-                  ? "Placement workspace"
-                  : user.role === "employer"
-                    ? "Employer workspace"
-                    : "Job seeker workspace"}
-            </h1>
-          </div>
-          <div>
-            <button aria-label="Notifications">
-              <Bell />
-            </button>
-            <Link
-              href="/dashboard/security"
-              className="user-chip"
-              aria-label="Account and security"
-            >
-              {user.email.slice(0, 2).toUpperCase()}
-            </Link>
-          </div>
-        </header>
-        {user.forcePasswordChange && (
-          <div className="security-banner">
-            <ShieldCheck />
-            <div>
-              <b>Secure your account before continuing</b>
-              <p>The temporary password must be replaced on first sign-in.</p>
-            </div>
-            <Link href="/dashboard/security">
-              Change password <ChevronRight />
-            </Link>
-          </div>
-        )}
-        {user.role === "employer" ? (
-          <EmployerView data={data} />
-        ) : user.role === "candidate" ? (
-          <CandidateView data={data} />
-        ) : (
-          <StaffView data={data} />
-        )}
-      </section>
-    </main>
+        </li>
+      ))}
+    </ol>
   );
 }
 function EmployerView({ data }: { data: any }) {

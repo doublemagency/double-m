@@ -48,15 +48,21 @@ app.use(
   "/api/",
   rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 120,
+    limit: 600,
     standardHeaders: "draft-7",
     legacyHeaders: false,
+    message: {
+      message: "Too many requests from this connection. Please wait a few minutes and try again.",
+    },
   }),
 );
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
   skipSuccessfulRequests: true,
+  message: {
+    message: "Too many attempts. Please wait 15 minutes and try again.",
+  },
 });
 const publicReviewLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -1540,7 +1546,7 @@ app.get(
   allow("administrator", "agency_staff"),
   async (_req, res, next) => {
     try {
-      const [[employers], [candidates], [jobs], [templates], [feeBands]] =
+      const [[employers], [candidates], [jobs], [templates], [feeBands], [ready]] =
         await Promise.all([
           db().query(
             "SELECT u.id,u.email,ep.full_name FROM users u LEFT JOIN employer_profiles ep ON ep.user_id=u.id WHERE u.role='employer' AND u.status='active' ORDER BY ep.full_name",
@@ -1557,6 +1563,22 @@ app.get(
           db().query(
             "SELECT salary_min,salary_max,fee_amount FROM fee_bands WHERE payer_role='employer' AND is_active=TRUE ORDER BY salary_min",
           ),
+          db().query(
+            `SELECT sc.shortlist_id,es.employer_user_id,sc.candidate_user_id,sc.employer_response,sc.employer_note,
+              sr.id staffing_request_id,sr.reference_code,sr.role_needed,
+              COALESCE(ep.full_name,eu.email) employer_name,COALESCE(cp.full_name,cu.email) candidate_name
+             FROM shortlist_candidates sc
+             JOIN employer_shortlists es ON es.id=sc.shortlist_id
+             JOIN staffing_requests sr ON sr.id=es.staffing_request_id AND sr.status NOT IN ('placed','closed','cancelled')
+             JOIN users eu ON eu.id=es.employer_user_id AND eu.status='active'
+             JOIN users cu ON cu.id=sc.candidate_user_id AND cu.status='active'
+             LEFT JOIN employer_profiles ep ON ep.user_id=es.employer_user_id
+             LEFT JOIN candidate_profiles cp ON cp.user_id=sc.candidate_user_id
+             WHERE sc.employer_response IN ('preferred','interview_requested')
+               AND cp.agency_approval_status='approved'
+               AND NOT EXISTS (SELECT 1 FROM employment_contracts ec WHERE ec.employer_user_id=es.employer_user_id AND ec.candidate_user_id=sc.candidate_user_id AND ec.status NOT IN ('cancelled','expired'))
+             ORDER BY sc.responded_at DESC LIMIT 50`,
+          ),
         ]);
       res.json({
         employers,
@@ -1564,6 +1586,7 @@ app.get(
         jobs,
         template: templates[0] || null,
         feeBands,
+        readyForContract: ready,
       });
     } catch (e) {
       next(e);
@@ -1601,13 +1624,22 @@ app.post(
           [v.employerUserId],
         ),
         [[candidate]] = await db().execute(
-          "SELECT COALESCE(cp.full_name,u.email) name FROM users u LEFT JOIN candidate_profiles cp ON cp.user_id=u.id WHERE u.id=? AND u.role='candidate' AND u.status='active'",
+          "SELECT COALESCE(cp.full_name,u.email) name,cp.agency_approval_status approval FROM users u LEFT JOIN candidate_profiles cp ON cp.user_id=u.id WHERE u.id=? AND u.role='candidate' AND u.status='active'",
           [v.candidateUserId],
         );
       if (!employer || !candidate)
         return res
           .status(400)
           .json({ message: "Choose active employer and candidate accounts." });
+      if (candidate.approval !== "approved")
+        return res.status(400).json({
+          message:
+            "This candidate is not agency-approved yet. Approve the profile before issuing a contract.",
+        });
+      const [[linkedRequest]] = await db().execute(
+        "SELECT es.staffing_request_id FROM employer_shortlists es JOIN shortlist_candidates sc ON sc.shortlist_id=es.id WHERE es.employer_user_id=? AND sc.candidate_user_id=? ORDER BY es.id DESC LIMIT 1",
+        [v.employerUserId, v.candidateUserId],
+      );
       const [[feeBand]] = await db().execute(
         "SELECT fee_amount FROM fee_bands WHERE payer_role='employer' AND is_active=TRUE AND ? BETWEEN salary_min AND salary_max ORDER BY salary_min DESC LIMIT 1",
         [v.anticipatedSalary],
@@ -1645,7 +1677,7 @@ app.post(
         snapshot = snapshot.replaceAll(token, esc(value));
       const number = `DMC-${new Date().getUTCFullYear()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
       await db().execute(
-        "INSERT INTO employment_contracts(contract_number,template_id,template_version,employer_user_id,candidate_user_id,job_id,role_title,salary_amount,agency_fee_amount,candidate_fee_amount,start_date,end_date,terms_snapshot,status,created_by,last_edited_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO employment_contracts(contract_number,template_id,template_version,employer_user_id,candidate_user_id,job_id,staffing_request_id,role_title,salary_amount,agency_fee_amount,candidate_fee_amount,start_date,end_date,terms_snapshot,status,created_by,last_edited_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [
           number,
           template.id,
@@ -1653,6 +1685,7 @@ app.post(
           v.employerUserId,
           v.candidateUserId,
           v.jobId || null,
+          linkedRequest?.staffing_request_id || null,
           v.roleTitle,
           v.anticipatedSalary,
           feeBand.fee_amount,
@@ -1702,7 +1735,7 @@ app.get("/api/v1/contracts", requireAuth, async (req, res, next) => {
       params = [req.user.id];
     }
     const [contracts] = await db().execute(
-      `SELECT ec.id,ec.contract_number,ec.role_title,ec.salary_amount,ec.agency_fee_amount,ec.candidate_fee_amount,ec.start_date,ec.end_date,ec.status,ec.employer_signed_at,ec.candidate_signed_at,ec.created_at,ec.updated_at,editor.email last_edited_by_email,j.reference_code job_reference,j.title job_title,COALESCE(ep.full_name,eu.email) employer_name,COALESCE(cp.full_name,cu.email) candidate_name FROM employment_contracts ec LEFT JOIN jobs j ON j.id=ec.job_id LEFT JOIN users editor ON editor.id=ec.last_edited_by LEFT JOIN users eu ON eu.id=ec.employer_user_id LEFT JOIN employer_profiles ep ON ep.user_id=ec.employer_user_id LEFT JOIN users cu ON cu.id=ec.candidate_user_id LEFT JOIN candidate_profiles cp ON cp.user_id=ec.candidate_user_id ${where} ORDER BY ec.created_at DESC LIMIT 100`,
+      `SELECT ec.id,ec.contract_number,ec.role_title,ec.salary_amount,ec.agency_fee_amount,ec.candidate_fee_amount,ec.start_date,ec.end_date,ec.status,ec.employer_signed_at,ec.candidate_signed_at,ec.created_at,ec.updated_at,(SELECT COUNT(*) FROM financial_transactions ft WHERE ft.contract_id=ec.id AND ft.payer_user_id=ec.employer_user_id) fee_records,(SELECT COUNT(*) FROM financial_transactions ft WHERE ft.contract_id=ec.id AND ft.payer_user_id=ec.employer_user_id AND ft.status='paid') fee_paid,editor.email last_edited_by_email,j.reference_code job_reference,j.title job_title,COALESCE(ep.full_name,eu.email) employer_name,COALESCE(cp.full_name,cu.email) candidate_name FROM employment_contracts ec LEFT JOIN jobs j ON j.id=ec.job_id LEFT JOIN users editor ON editor.id=ec.last_edited_by LEFT JOIN users eu ON eu.id=ec.employer_user_id LEFT JOIN employer_profiles ep ON ep.user_id=ec.employer_user_id LEFT JOIN users cu ON cu.id=ec.candidate_user_id LEFT JOIN candidate_profiles cp ON cp.user_id=ec.candidate_user_id ${where} ORDER BY ec.created_at DESC LIMIT 100`,
       params,
     );
     res.json({ contracts });
@@ -2034,7 +2067,7 @@ app.post(
           .json({ message: "This contract cannot be signed." });
       }
       const [[contract]] = await connection.execute(
-        "SELECT job_id,placement_id,employer_user_id,candidate_user_id,role_title,start_date,end_date,status FROM employment_contracts WHERE id=? FOR UPDATE",
+        "SELECT job_id,staffing_request_id,placement_id,employer_user_id,candidate_user_id,role_title,start_date,end_date,status FROM employment_contracts WHERE id=? FOR UPDATE",
         [id],
       );
       if (contract.status === "fully_signed") {
@@ -2058,6 +2091,11 @@ app.post(
           "UPDATE candidate_profiles SET availability_status='placed' WHERE user_id=?",
           [contract.candidate_user_id],
         );
+        if (contract.staffing_request_id)
+          await connection.execute(
+            "UPDATE staffing_requests SET status='placed' WHERE id=? AND status NOT IN ('closed','cancelled')",
+            [contract.staffing_request_id],
+          );
         if (contract.job_id) {
           await connection.execute(
             "UPDATE jobs SET status='filled' WHERE id=?",
@@ -2917,7 +2955,7 @@ app.get(
       const [candidates] = await db().query(
         `SELECT cp.user_id,cp.full_name,cp.profession,cp.location,cp.availability_status,
           pd.education_level,pd.languages,pd.experience_summary,pd.skills_summary,
-          pref.best_role,pref.other_roles,pref.work_arrangement,
+          pref.best_role,pref.other_roles,pref.work_arrangement,pref.preferred_location,pref.expected_salary,
           CASE WHEN pd.date_of_birth IS NULL THEN NULL ELSE TIMESTAMPDIFF(YEAR,pd.date_of_birth,CURDATE()) END age
          FROM candidate_profiles cp
          JOIN users u ON u.id=cp.user_id AND u.status='active'
@@ -2925,12 +2963,12 @@ app.get(
          JOIN candidate_verification_checks phone_check ON phone_check.candidate_user_id=cp.user_id AND phone_check.check_code='phone_call' AND phone_check.status='verified'
          LEFT JOIN candidate_private_details pd ON pd.candidate_user_id=cp.user_id
          LEFT JOIN candidate_preferences pref ON pref.candidate_user_id=cp.user_id
-         WHERE cp.availability_status='available' LIMIT 200`,
+         WHERE cp.availability_status='available' AND cp.agency_approval_status='approved' LIMIT 200`,
       );
       const matches = candidates
         .map((candidate) => ({
           candidate,
-          ...scoreCandidate(requests[0], candidate),
+          ...scoreCandidate(requests[0], candidate, candidate),
         }))
         .sort((a, b) => b.score - a.score);
       res.json({
@@ -2978,7 +3016,7 @@ app.post(
         });
       const placeholders = v.candidateUserIds.map(() => "?").join(",");
       const [candidates] = await db().execute(
-        `SELECT cp.user_id,cp.full_name,cp.profession,cp.location,cp.availability_status FROM candidate_profiles cp JOIN users u ON u.id=cp.user_id AND u.status='active' JOIN candidate_verification_checks identity_check ON identity_check.candidate_user_id=cp.user_id AND identity_check.check_code='identity' AND identity_check.status='verified' JOIN candidate_verification_checks phone_check ON phone_check.candidate_user_id=cp.user_id AND phone_check.check_code='phone_call' AND phone_check.status='verified' WHERE cp.user_id IN (${placeholders}) AND cp.availability_status='available'`,
+        `SELECT cp.user_id,cp.full_name,cp.profession,cp.location,cp.availability_status FROM candidate_profiles cp JOIN users u ON u.id=cp.user_id AND u.status='active' JOIN candidate_verification_checks identity_check ON identity_check.candidate_user_id=cp.user_id AND identity_check.check_code='identity' AND identity_check.status='verified' JOIN candidate_verification_checks phone_check ON phone_check.candidate_user_id=cp.user_id AND phone_check.check_code='phone_call' AND phone_check.status='verified' WHERE cp.user_id IN (${placeholders}) AND cp.availability_status='available' AND cp.agency_approval_status='approved'`,
         v.candidateUserIds,
       );
       const conn = await db().getConnection();
@@ -2989,7 +3027,7 @@ app.post(
           [v.employerUserId, v.staffingRequestId, req.user.id],
         );
         for (const c of candidates) {
-          const match = scoreCandidate(requests[0], c),
+          const match = scoreCandidate(requests[0], c, c),
             summary = `${c.profession}. General location: ${c.location}. Availability: ${c.availability_status}.`;
           await conn.execute(
             "INSERT INTO shortlist_candidates(shortlist_id,candidate_user_id,public_summary,match_score,match_reasons) VALUES(?,?,?,?,?)",

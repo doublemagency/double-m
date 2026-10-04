@@ -2,7 +2,13 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LockKeyhole, ShieldCheck } from "lucide-react";
+import {
+  BriefcaseBusiness,
+  ClipboardList,
+  LockKeyhole,
+  ShieldCheck,
+  UserCog,
+} from "lucide-react";
 import { SimpleHeader } from "../components/simple-header";
 import { GoogleSignIn } from "../components/google-sign-in";
 import { PasswordField } from "../components/password-field";
@@ -36,13 +42,40 @@ export default function Login() {
   return (
     <>
       <SimpleHeader />
-      <main className="login-page">
+      <main className="login-page login-split">
+        <aside className="login-aside">
+          <span className="kicker light">Double M workspace</span>
+          <h2>One sign-in. Your workspace opens for your role.</h2>
+          <ul>
+            <li>
+              <ClipboardList />
+              <div>
+                <strong>Employers</strong>
+                <small>Request staff, review shortlists, sign contracts and track payments.</small>
+              </div>
+            </li>
+            <li>
+              <BriefcaseBusiness />
+              <div>
+                <strong>Job seekers</strong>
+                <small>Complete your profile, upload documents and follow your applications.</small>
+              </div>
+            </li>
+            <li>
+              <UserCog />
+              <div>
+                <strong>Agency team</strong>
+                <small>Verify candidates, match requests and manage contracts and finance.</small>
+              </div>
+            </li>
+          </ul>
+        </aside>
         <form className="form-panel" onSubmit={submit}>
           <span className="login-icon">
             <LockKeyhole />
           </span>
-          <h1>Welcome back</h1>
-          <p>Continue to your private Double M workspace.</p>
+          <h1>Sign in</h1>
+          <p>Employers, job seekers and agency staff sign in here.</p>
           <label>
             Email address
             <input name="email" type="email" autoComplete="email" required />

@@ -29,9 +29,9 @@ export const metadata = { title: "Frequently asked questions" };
 export default function FAQs() {
   return (
     <PublicPage
-      eyebrow="Straight answers"
-      title="What employers and job seekers ask us most."
-      intro="Clear expectations build better working relationships. If your question is not answered here, speak directly with our team."
+      eyebrow="FAQs"
+      title="Common questions."
+      intro="Not answered here? Talk to our team."
     >
       <section className="faq-list shell">
         {faqs.map(([q, a]) => (

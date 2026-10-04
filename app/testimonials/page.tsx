@@ -6,8 +6,8 @@ export default function Testimonials() {
   return (
     <PublicPage
       eyebrow="Experiences"
-      title="Trust is earned through the work."
-      intro="Only approved, permission-based reviews from employers and placed candidates are published here."
+      title="What clients say."
+      intro="Approved reviews from employers and placed workers."
     >
       <section className="honest-empty shell">
         <PublicReviewRail />

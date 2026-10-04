@@ -10,9 +10,9 @@ export const metadata = {
 export default function Blog() {
   return (
     <PublicPage
-      eyebrow="Knowledge centre"
-      title="Expert advice for better home and work relationships."
-      intro="Practical, easy-to-understand articles that help employers, families, househelps and job seekers build respectful, successful working relationships."
+      eyebrow="Guides"
+      title="Advice for homes and workers."
+      intro="Practical articles for employers, families and job seekers."
     >
       <section className="blog-banner shell">
         <Image

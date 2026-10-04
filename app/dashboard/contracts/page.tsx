@@ -6,7 +6,8 @@ export default function Contracts() {
   const [options, setOptions] = useState<any>(null),
     [contracts, setContracts] = useState<any[]>([]),
     [message, setMessage] = useState(""),
-    [dialog, setDialog] = useState<"create" | "replace" | null>(null);
+    [dialog, setDialog] = useState<"create" | "replace" | null>(null),
+    [prefill, setPrefill] = useState<any>(null);
   async function load() {
     const [o, c] = await Promise.all([
       fetch(`${process.env.NEXT_PUBLIC_API_URL}/staff/contract-options`, {
@@ -93,7 +94,13 @@ export default function Contracts() {
           <span>{contracts.length} records</span>
         </div>
         <div>
-          <button className="button dark" onClick={() => setDialog("create")}>
+          <button
+            className="button dark"
+            onClick={() => {
+              setPrefill(null);
+              setDialog("create");
+            }}
+          >
             ＋ Create & send
           </button>
           <button className="button light" onClick={() => setDialog("replace")}>
@@ -101,20 +108,70 @@ export default function Contracts() {
           </button>
         </div>
       </div>
+      {options?.readyForContract?.length > 0 && (
+        <section className="dash-panel ready-panel">
+          <div className="panel-heading">
+            <div>
+              <span>Next step</span>
+              <h2>Employer choices ready for a contract</h2>
+            </div>
+            <span>{options.readyForContract.length}</span>
+          </div>
+          <div className="simple-rows">
+            {options.readyForContract.map((item: any) => (
+              <div key={`${item.shortlist_id}-${item.candidate_user_id}`}>
+                <b>
+                  {item.employer_name} chose {item.candidate_name}
+                  <small>
+                    {item.reference_code} · {item.role_needed} ·{" "}
+                    {item.employer_response.replaceAll("_", " ")}
+                  </small>
+                  {item.employer_note && <small>&ldquo;{item.employer_note}&rdquo;</small>}
+                </b>
+                <span>
+                  <button
+                    className="table-action"
+                    onClick={() => {
+                      setPrefill(item);
+                      setDialog("create");
+                    }}
+                  >
+                    Create contract
+                  </button>
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      {contracts.some(
+        (c) => c.status === "fully_signed" && !Number(c.fee_records),
+      ) && (
+        <div className="security-banner">
+          <div>
+            <b>Signed contracts are waiting for their agency fee</b>
+            <p>Use &ldquo;Record agency fee&rdquo; on the contract to raise the charge.</p>
+          </div>
+        </div>
+      )}
       {dialog === "create" && (
         <div className="workspace-modal" role="dialog" aria-modal="true">
           <div className="workspace-modal-card">
             <button className="modal-close" onClick={() => setDialog(null)}>
               Close
             </button>
-            <form onSubmit={submit}>
+            <form onSubmit={submit} key={prefill?.candidate_user_id || "blank"}>
               <h2>Create and send</h2>
               {!options?.template && (
                 <p>An administrator must save contract terms first.</p>
               )}
               <label>
                 Employer
-                <select name="employerUserId" required>
+                <select
+                  name="employerUserId"
+                  required
+                  defaultValue={prefill?.employer_user_id || ""}
+                >
                   <option value="">Choose employer</option>
                   {options?.employers.map((x: any) => (
                     <option value={x.id} key={x.id}>
@@ -125,7 +182,11 @@ export default function Contracts() {
               </label>
               <label>
                 Employee / candidate
-                <select name="candidateUserId" required>
+                <select
+                  name="candidateUserId"
+                  required
+                  defaultValue={prefill?.candidate_user_id || ""}
+                >
                   <option value="">Choose employee</option>
                   {options?.candidates.map((x: any) => (
                     <option value={x.id} key={x.id}>
@@ -159,7 +220,11 @@ export default function Contracts() {
               </label>
               <label>
                 Role title
-                <input name="roleTitle" required />
+                <input
+                  name="roleTitle"
+                  required
+                  defaultValue={prefill?.role_needed || ""}
+                />
               </label>
               <label>
                 Agreed monthly salary (KES)
@@ -244,6 +309,21 @@ export default function Contracts() {
                   Last edited {new Date(c.updated_at).toLocaleDateString()}{" "}
                   {c.last_edited_by_email ? `by ${c.last_edited_by_email}` : ""}
                 </small>
+                {c.status === "fully_signed" && !Number(c.fee_records) && (
+                  <Link
+                    className="table-action"
+                    href={`/dashboard/finance?contract=${c.id}`}
+                  >
+                    Record agency fee
+                  </Link>
+                )}
+                {c.status === "fully_signed" && Number(c.fee_records) > 0 && (
+                  <small>
+                    {Number(c.fee_paid) > 0
+                      ? "Agency fee paid"
+                      : "Agency fee awaiting payment"}
+                  </small>
+                )}
                 {c.status === "fully_signed" && (
                   <a
                     className="table-action"

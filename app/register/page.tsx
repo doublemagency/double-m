@@ -9,11 +9,8 @@ export default function Register() {
       <main className="form-page">
         <section className="form-intro">
           <span>Candidate registration</span>
-          <h1>Build a profile that opens the right doors.</h1>
-          <p>
-            Start with the essentials. After email verification, you can add
-            your experience, documents and work preferences privately.
-          </p>
+          <h1>Create your profile.</h1>
+          <p>Start with the basics. Add documents after verifying your email.</p>
         </section>
         <section className="form-panel">
           <h2>Create your account</h2>

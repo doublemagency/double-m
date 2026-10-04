@@ -1,6 +1,13 @@
 "use client";
 import Link from "next/link";
-import { Facebook, MapPin, MessageCircle, Music2, Youtube } from "lucide-react";
+import {
+  Facebook,
+  MapPin,
+  MessageCircle,
+  Music2,
+  Phone,
+  Youtube,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 type Settings = {
   contact_phone?: string;
@@ -128,6 +135,21 @@ export function SiteFooter() {
         <MessageCircle />
         <span>Chat with us</span>
       </Link>
+      <nav className="mobile-action-bar" aria-label="Quick actions">
+        {phone && (
+          <a href={`tel:${digits.startsWith("0") ? `+254${digits.slice(1)}` : `+${digits}`}`}>
+            <Phone /> Call
+          </a>
+        )}
+        {phone && (
+          <a href={whatsapp} target="_blank" rel="noreferrer">
+            <MessageCircle /> WhatsApp
+          </a>
+        )}
+        <Link className="primary" href="/hire">
+          Request staff
+        </Link>
+      </nav>
     </>
   );
 }

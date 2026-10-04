@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { AvailableCandidateRail } from "../components/available-candidate-rail";
 import { ShareButton } from "../components/share-button";
-import { SimpleHeader } from "../components/simple-header";
+import { BoardTabs, SimpleHeader } from "../components/simple-header";
+import { SiteFooter } from "../components/site-footer";
 
 export const metadata: Metadata = {
   title: "Available Househelps, Nannies and Caregivers",
@@ -14,13 +15,10 @@ export default function TalentPage() {
     <>
       <SimpleHeader />
       <main className="talent-page shell">
+        <BoardTabs active="talent" />
         <section className="talent-page-heading">
-          <span>Available talent</span>
-          <h1>Meet workers ready for a suitable placement.</h1>
-          <p>
-            Browse concise public profiles. Double M keeps identity documents
-            and sensitive personal information private.
-          </p>
+          <h1>Available workers</h1>
+          <p>Short public profiles. IDs and sensitive details stay private.</p>
           <ShareButton
             title="Available workers at Double M Agency"
             url="/talent"
@@ -28,8 +26,9 @@ export default function TalentPage() {
             text="View available househelps, nannies, caregivers and practical staff through Double M Agency."
           />
         </section>
-        <AvailableCandidateRail />
+        <AvailableCandidateRail layout="grid" />
       </main>
+      <SiteFooter />
     </>
   );
 }

@@ -4,8 +4,8 @@ export default function Privacy() {
   return (
     <PublicPage
       eyebrow="Privacy"
-      title="Your information is handled for a clear purpose."
-      intro="Double M Agency uses recruitment and service data to verify people, make suitable introductions, manage placements and meet lawful obligations."
+      title="How we handle your information."
+      intro="We use data to verify people, make introductions and manage placements."
     >
       <article className="prose shell">
         <h2>How information is handled</h2>

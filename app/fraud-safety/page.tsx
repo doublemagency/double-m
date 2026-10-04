@@ -4,8 +4,8 @@ export default function FraudSafety() {
   return (
     <PublicPage
       eyebrow="Stay safe"
-      title="Confirm before you pay, travel or share documents."
-      intro="Use only Double M Agency’s official website, verified contacts and protected account pages."
+      title="Confirm before you pay or share documents."
+      intro="Use only our official website and verified contacts."
     >
       <article className="prose shell">
         <h2>Check the opportunity</h2>

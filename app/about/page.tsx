@@ -8,8 +8,8 @@ export default function About() {
   return (
     <PublicPage
       eyebrow="About Double M"
-      title="Recruitment built on care, clarity and accountability."
-      intro="We connect employers and job seekers through a process designed to protect dignity, understand the real work and support both sides beyond placement."
+      title="Recruitment built on care and accountability."
+      intro="We connect employers and job seekers, and support both beyond placement."
     >
       <section className="content-grid shell" id="how-we-work">
         <article>

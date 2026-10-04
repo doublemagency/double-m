@@ -49,3 +49,9 @@ next-env.d.ts
 # Runtime uploads stay on the backend host and are never versioned
 /backend/private-uploads/
 /backend/uploads/
+
+# local artifacts
+/tmp/
+/contract-smoke*
+/patch-api*
+*.tsbuildinfo

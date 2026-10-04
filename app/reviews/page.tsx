@@ -10,9 +10,9 @@ export const metadata = {
 export default function LeaveReview() {
   return (
     <PublicPage
-      eyebrow="Your experience"
-      title="Leave a genuine review."
-      intro="You can submit feedback without signing in. Reviews and star ratings remain private until approved by an administrator."
+      eyebrow="Reviews"
+      title="Leave a review."
+      intro="No sign-in needed. Reviews appear after approval."
     >
       <section className="public-review-section shell">
         <div>

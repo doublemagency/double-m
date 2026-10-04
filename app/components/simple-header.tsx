@@ -25,3 +25,19 @@ export function SimpleHeader() {
     </header>
   );
 }
+
+export function BoardTabs({ active }: { active: "jobs" | "talent" }) {
+  return (
+    <nav className="board-tabs" aria-label="Browse">
+      <Link href="/jobs" className={active === "jobs" ? "active" : undefined}>
+        Jobs for workers
+      </Link>
+      <Link
+        href="/talent"
+        className={active === "talent" ? "active" : undefined}
+      >
+        Available workers
+      </Link>
+    </nav>
+  );
+}

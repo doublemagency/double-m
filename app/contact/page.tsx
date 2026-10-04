@@ -6,7 +6,7 @@ export default function Contact() {
     <PublicPage
       eyebrow="Contact us"
       title="Speak with a real person."
-      intro="Ask about a role, a staffing need or an ongoing placement. Official contact details are controlled from the secure administration workspace."
+      intro="Ask about a role, a staffing need or a placement."
     >
       <ContactDetails />
     </PublicPage>

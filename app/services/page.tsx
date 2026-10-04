@@ -36,9 +36,9 @@ export const metadata = { title: "Recruitment services in Kenya" };
 export default function Services() {
   return (
     <PublicPage
-      eyebrow="Our services"
-      title="The right support for the role in front of you."
-      intro="We recruit for homes, farms and organisations, with requirements clarified before screening begins and recommendations reviewed by experienced agency staff."
+      eyebrow="Services"
+      title="Support for every role."
+      intro="Homes, farms and organisations. Requirements are clarified before screening."
     >
       <section className="service-groups shell">
         {groups.map((g) => (
